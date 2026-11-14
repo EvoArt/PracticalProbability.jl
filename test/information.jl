@@ -154,7 +154,7 @@
         @test evaluate(KL(Family(:Bernoulli, 0.3), Family(:Bernoulli, 0.6))) ≈ compute(KL(P(A), q(A)), ebn)
         @test evaluate(H(Family(:Bernoulli, 0.3))) ≈ compute(H(A), ebn)
         @test_throws ArgumentError H(Family(:Poisson, 1))
-        @test_throws ArgumentError Family(:Cauchy, 0, 1)
+        @test_throws ArgumentError Family(:Weibull, 1, 1)
         @test sprint(show, Family(:Normal, μ, σ)) == "Normal(μ, σ)"
 
         # special functions
