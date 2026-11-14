@@ -75,7 +75,8 @@ function _pdraw_dag!(ax, V::DAGView, st)
             fs = _PDAGFONT.node * min(1.0, 3.2 / max(length(string(n.v.name)), 1)) * st.scale
             if n.shape === :dot
                 PBP.poly!(ax, _pcircle(n.x, n.y, 0.09; n=40); color=st.stroke)
-                _ptext!(ax, n.x + 0.15, n.y, lab; align=(:left, :center), fontsize=fs, color=st.text)
+                # the name above the dot: an input is a root, so its edges leave downwards
+                _ptext!(ax, n.x, n.y + 0.13, lab; align=(:center, :bottom), fontsize=fs, color=st.text)
                 continue
             end
             h = 0.92R

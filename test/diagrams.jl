@@ -166,6 +166,35 @@ const PPd = PracticalProbability
         @rv X
         @test_throws ArgumentError PPd.tree_layout([X])                      # values need a BayesNet
         @test_throws ArgumentError PPd.tree_layout([A]; bn=test, facts)      # one source of numbers
+
+        # labels: none overlaps another or crosses a branch (three outcomes give a middle branch)
+        @rv W R
+        three = BayesNet(W => [0.2, 0.5, 0.3], (R | W) => [0.9 0.5 0.1; 0.1 0.5 0.9];
+                         domains=Dict(W => [:low, :mid, :high], R => [:dry, :wet]))
+        F = PPd.TREE_FONT
+        overlaps(a, b) = abs(a[1] - b[1]) < (a[3] + b[3]) / 2 && abs(a[2] - b[2]) < (a[4] + b[4]) / 2
+        # does the segment cross the box (centre x, y, width, height)? sampled finely
+        crosses(b, box) = any(range(0, 1; length=400)) do t
+            x, y = b.x0 + t * (b.x1 - b.x0), b.y0 + t * (b.y1 - b.y0)
+            abs(x - box[1]) < box[3] / 2 && abs(y - box[2]) < box[4] / 2
+        end
+        for L in (PPd.tree_layout(P(D | T); bn=test), PPd.tree_layout([W, R]; bn=three))
+            mid = PPd._branchmiddle(L)
+            @test count(mid) == (L.levels[1] == W ? 1 : 0)     # W = mid, between low and high
+            boxes = NTuple{4,Float64}[]
+            for (b, m) in zip(L.branches, mid)
+                wp, wo = PPd._textwidth(PPd._branchtext(b), F.prob), PPd._textwidth(sprint(show, b.atom), F.outcome)
+                (px, py), (ox, oy) = PPd._branchlabels(b, wp, F.prob, wo, F.outcome; middle=m)
+                append!(boxes, [(px, py, wp, F.prob), (ox, oy, wo, F.outcome)])
+            end
+            for l in L.leaves
+                x0, w = PPd._leafbox(l)
+                push!(boxes, (x0 + w / 2, l.y, w, 0.44))
+            end
+            @test !any(overlaps(boxes[i], boxes[j]) for i in eachindex(boxes) for j in i+1:length(boxes))
+            @test !any(crosses(b, box) for b in L.branches for box in boxes)
+            @test L.bbox[2] >= maximum(box[1] + box[3] / 2 for box in boxes)
+        end
     end
 
     @testset "mosaics" begin
@@ -180,6 +209,16 @@ const PPd = PracticalProbability
         @test [h[1] for h in M.sideheaders] == [T, T'] && M.sideheaders[1][2] > M.sideheaders[2][2]   # top down
         @event A B
         @test_throws ArgumentError PPd.mosaic_layout([A, B]; facts=(P(A) => 0.3,))   # undetermined
+
+        # headers: the 1% column's moved inside the figure and clear of its neighbour's;
+        # the box is wide enough for the caption
+        hx, sy, bbox = PPd._mosaicplaces(M, 0.13)
+        hw = [PPd._textwidth(sprint(show, a), PPd.MOSAIC_FONT.header) for (a, _) in M.headers]
+        @test hx[1] - hw[1] / 2 >= 0 && hx[1] + hw[1] / 2 < hx[2] - hw[2] / 2
+        @test issorted(sy; rev=true) && bbox[2] > 1
+        @test bbox[2] - bbox[1] >= PPd._textwidth(M.caption, PPd.MOSAIC_FONT.caption)
+        @test PPd._tilefont("a long label for a thin tile", 0.05, 0.5, 0.04) == 0
+        @test PPd._tilefont("Dᶜ ∩ Tᶜ", 0.9, 0.9, 0.04) == 0.04
     end
 
     @testset "sample events" begin

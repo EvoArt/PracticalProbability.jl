@@ -131,6 +131,8 @@ function rpow(b::RExpr, p::Number)
     b isa RConst && return RConst(_numpow(b.value, p))
     b isa RPow && return rpow(b.base, b.p * p)
     b isa RInd && p > 0 && return b                # 𝟙(A)ᵖ = 𝟙(A)
+    b isa RFun && b.f === :exp && return RFun(:exp, rmul(RConst(p), b.arg))   # (eᵃ)ᵖ = e^{pa}
+
     return RPow(b, p)
 end
 

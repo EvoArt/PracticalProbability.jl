@@ -153,7 +153,7 @@ terms by polynomial division:
 @rv a b c
 expand((X + Y)^2)                  # X² + 2X Y + Y²
 simplify((a*b + a*c) / a)          # b + c
-derivative(log(X^2 + 1), X)        # 2X (X² + 1)⁻¹
+derivative(log(X^2 + 1), X)        # 2 (X² + 1)⁻¹ X
 substitute(exp(X * Y), Y => 0)     # 1
 canonical(P(B, A | D, C))          # P(A, B | C, D): equal expressions print the same
 simplify(e; search = true)         # search over rule orders for the smallest form
@@ -171,10 +171,10 @@ L = laws(X => Family(:Normal, 1, 2), Y => Family(:Normal, -1, 3))
 law(2X + Y + 3, L)                        # Normal(4.0, 5.0)
 law(exp(X), L)                            # LogNormal(1.0, 2.0)
 law(X^2 + Y^2, laws(X => Family(:Normal, 0, 1), Y => Family(:Normal, 0, 1)))   # Gamma(1, 0.5) = χ²₂
-law(min(X, Y), laws(X => Family(:Exponential, λ), Y => Family(:Exponential, 2)))  # Exponential(λ + 2)
+law(min(X, Y), laws(X => Family(:Exponential, λ), Y => Family(:Exponential, 2)))  # Exponential(λ + 2.0)
 
 MGF(Family(:Normal, μ, σ), t)             # exp(μ t + 1/2 σ² t²)
-MGF(2X + Y, L, t)                         # M_X(2t) M_Y(t)
+MGF(2X + Y, L, t)                         # M_X(2t) M_Y(t) = exp(t + 12.5 t²)
 CF(Family(:Cauchy, 0, 1), t)              # exp(-|t|)
 rawmoment(Family(:Normal, μ, σ), 4)       # μ⁴ + 6μ² σ² + 3σ⁴, from the MGF
 cumulant(Family(:Poisson, λ), 3)          # λ
@@ -184,7 +184,8 @@ simplify(E(X^2 + 3Y), laws(X => Family(:Normal, μ, σ), Y => Family(:Poisson, �
 PDF(Family(:Gamma, 2, 1), y)              # densities and CDFs as random quantities
 CDF(Family(:Normal, 0, 1), 1.96)          # 0.975 (Φ)
 change_of_variables(Family(:Normal, 0, 1), X, exp(X), y)   # the LogNormal density
-order_statistic(Family(:Exponential, λ), 1, 3, y)        # the minimum of three: 3λ e^{-3λy}
+order_statistic(Family(:Exponential, λ), 1, 3, y)        # the minimum of three: 3 λ exp(-3 y λ)
+
 ```
 
 ## Gaussians and linear SEMs

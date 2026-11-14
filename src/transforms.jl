@@ -274,19 +274,32 @@ function _gf_under_laws(g, x::RExpr, L::Laws, t::RExpr, scaled::Bool)
             # e^{bt} for an MGF; e^{ibt} for a CF
             shift = g === _cf ? rmul(RConst(im), b, t) : rmul(b, t)
             _isnum(b, 0) || push!(parts, _rf(:exp, shift))
-            return rmul(parts...)
+            return _mergeexp(parts)
         else       # PGF of a sum of non-negative integer variables: coefficients must be 1
             all(a -> _isnum(a, 1), values(coefs)) && b isa RConst && isinteger(b.value) && b.value >= 0 ||
                 throw(ArgumentError("a PGF of a combination needs a plain sum of variables plus a non-negative integer"))
             parts = RExpr[g(L[v], t) for v in keys(coefs)]
             _isnum(b, 0) || push!(parts, rpow(t, Int(b.value)))
-            return rmul(parts...)
+            return _mergeexp(parts)
         end
     end
     return g(law(x, L), t)
 end
 
+# A product with its exponentials merged, e^a e^b = e^{a+b}, exponent expanded.
+function _mergeexp(parts::Vector{RExpr})
+    fs = RExpr[]
+    for p in parts
+        append!(fs, p isa RMul ? p.factors : RExpr[p])
+    end
+    es = RExpr[f.arg for f in fs if f isa RFun && f.f === :exp]
+    length(es) <= 1 && return rmul(fs...)
+    rest = RExpr[f for f in fs if !(f isa RFun && f.f === :exp)]
+    return rmul(rest..., _rf(:exp, expand(radd(es...))))
+end
+
 # A random quantity as ∑ aᵢ Xᵢ + b, with the Xᵢ variables that have laws and
+
 # the coefficients free of them, or `nothing`.
 _linear(x::RExpr, L::Laws) = _linear_in(x, v -> haskey(L, v))
 # The same for the variables `isvar` picks out.

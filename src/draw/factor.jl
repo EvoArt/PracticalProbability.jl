@@ -49,7 +49,7 @@ function factorplot!(ax::PBP.Axis, f::Factor; kind::Symbol=:bars, color=1, palet
                          color=palette[mod1(g, length(palette))], label=labels[g])
         end
         ax.ylabel = f.label
-        legend && PBP.axislegend(ax, string(v2.name); position=:rt)
+        legend && PBP.axislegend(ax, string(v2.name))      # where it covers the fewest bars
         return ax
     end
     throw(ArgumentError("kind must be :bars or :heatmap, got :$kind"))

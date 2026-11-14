@@ -83,7 +83,8 @@ function _draw_dag!(ax, V::DAGView, st)
             lab, fs = _nodelabel(n.v, st.labels)
             if n.shape === :dot
                 Makie.poly!(ax, _circle(n.x, n.y, 0.09; n=40); color=st.stroke, strokewidth=0)
-                Makie.text!(ax, Makie.Point2f(n.x + 0.15, n.y); text=lab, align=(:left, :center),
+                # the name above the dot: an input is a root, so its edges leave downwards
+                Makie.text!(ax, Makie.Point2f(n.x, n.y + 0.13); text=lab, align=(:center, :bottom),
                             fontsize=fs * st.scale, markerspace=:data, color=st.text)
                 continue
             end

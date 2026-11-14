@@ -73,6 +73,8 @@
             @test evaluate(MGF(2X + Y + 1, L, t), t => s) ≈ evaluate(MGF(law(2X + Y + 1, L), t), t => s)
         end
         @test MGF(X + Y, L, 0.2).value ≈ exp(0.0 * 0.2 + 13 * 0.04 / 2)
+        @test MGF(2X + Y + 1, L, t) isa PracticalProbability.RFun          # one merged exponential
+        @test MGF(2X + Y, L, t) == exp(t + 12.5 * t^2)
         @test evaluate(PGF(Family(:Poisson, λ), y), vals..., y => 0.5) ≈ exp(2.1 * (0.5 - 1))
         Lp = laws(X => Family(:Poisson, 1.5), Y => Family(:Poisson, 2.5))
         @test evaluate(PGF(X + Y, Lp, y), y => 0.5) ≈ exp(4 * (0.5 - 1))
@@ -119,6 +121,8 @@
     @testset "order statistics" begin
         m = order_statistic(Family(:Exponential, λ), 1, 3, y)       # the minimum of three
         @test evaluate(m, vals..., y => 0.4) ≈ 3 * 2.1 * exp(-3 * 2.1 * 0.4)
+        @test !any(f -> f isa PracticalProbability.RPow, m.factors)        # (e^a)³ folded to e^{3a}
+
         @test evaluate(order_statistic(Family(:Uniform, 0, 1), 2, 2, y), y => 0.3) ≈ 0.6
         @test evaluate(order_statistic(Family(:Uniform, 0, 1), 2, 3, y), y => 0.3) ≈ 6 * 0.3 * 0.7
     end
