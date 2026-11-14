@@ -208,7 +208,7 @@ ComplexityMeasures.jl and Associations.jl cover those.
 
 ### Infrastructure
 - [x] Version control (git).
-- [ ] The package on GitHub with CI running the tests.
+- [x] The package on GitHub with CI running the tests.
 
 - [x] Static checks in the test suite: Aqua (ambiguities, unbound parameters,
       stale dependencies, compat, piracy) and JET (provable errors).
