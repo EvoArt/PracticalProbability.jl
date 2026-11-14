@@ -408,7 +408,6 @@ Whether the inequality follows from Shannon's inequalities (see [`prove`](@ref))
 """
 isshannon(q::Inequality; kwargs...) = prove(q; kwargs...).holds
 
-_numstr(x) = x isa Rational ? string(numerator(x), "/", denominator(x)) : string(x)
 
 function Base.show(io::IO, ::MIME"text/plain", p::ShannonProof)
     q = p.inequality

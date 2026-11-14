@@ -33,12 +33,12 @@ _div(a, b) = a / b
 _div(a::_Exact, b::_Exact) = iszero(b) ? NaN : a // b
 # A table as an array with an exact element type where it is exact.
 function _tablearray(t)
-    A = t isa Real ? fill(t) : identity.(collect(t))     # identity. narrows `Any` eltypes
+    # `map`, not broadcasting: broadcasting over a 0-dim array returns a scalar
+    A = t isa Real ? fill(t) : map(identity, collect(t))      # map(identity) narrows `Any` eltypes
     eltype(A) <: Rational && return A
-    all(x -> x isa _Exact, A) && return Rational{Int}.(A)    # integers, or a mix of integers and rationals
-
-    eltype(A) <: Real || throw(ArgumentError("a probability table must contain numbers"))
-    return float.(A)
+    all(x -> x isa _Exact, A) && return map(Rational{Int}, A)  # integers, or a mix of integers and rationals
+    all(x -> x isa Real, A) || throw(ArgumentError("a probability table must contain numbers"))
+    return map(float, A)
 end
 
 _relabel(f::Factor, label) = Factor(f.vars, f.domains, f.values, label)

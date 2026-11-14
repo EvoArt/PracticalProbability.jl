@@ -11,6 +11,8 @@ function _pdagstyle(; highlightcolor=1, opencolor=:firebrick, blockedcolor=:gray
 end
 
 _pview(x::DAGView, q, plates, adjust) = x
+_pview(x::DAGView, ::Nothing, plates, adjust) = x
+
 _pview(x, ::Nothing, plates, adjust) = dag_view(x; plates, adjust)
 _pview(x, q, plates, adjust) = dag_view(x, q; plates, adjust)
 
