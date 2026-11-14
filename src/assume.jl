@@ -119,33 +119,40 @@ push!(_RULES, rule_fact_disjoint, rule_fact_implies, rule_fact_independence)
     Solution
 
 The result of [`deduce`](@ref): the query, its value (or `NaN`), and whether
-the facts determine it. Converts to `Float64`.
+the facts determine it. Converts to `Float64`. When every known value is an
+integer or a `Rational`, the value is an exact `Rational`.
 """
 struct Solution
     query::PExpr
-    value::Float64
+    value::Real
     determined::Bool
     undetermined::Vector{PExpr}
 end
-Base.Float64(s::Solution) = s.value
+Base.Float64(s::Solution) = Float64(s.value)
+_solstr(v::Rational) = _numstr(v)
+_solstr(v) = string(round(v; sigdigits=10))
 function Base.show(io::IO, s::Solution)
     show(io, s.query)
     if s.determined
-        print(io, " = ", round(s.value; sigdigits=10))
+        print(io, " = ", _solstr(s.value))
     else
         print(io, " is not determined by the facts")
         isempty(s.undetermined) || print(io, " (unknown: ", join(map(x -> sprint(show, x), s.undetermined), ", "), ")")
     end
 end
 Base.show(io::IO, ::MIME"text/latex", s::Solution) =
-    print(io, "\$\$", _latex(s.query), s.determined ? " = $(round(s.value; sigdigits=10))" : " \\text{ (not determined)}", "\$\$")
+    print(io, "\$\$", _latex(s.query), _solution_latex(s), "\$\$")
+_solution_latex(s::Solution) = s.determined ? string(" = ", _lx(s.value)) : " \\text{ (not determined)}"
 
-# The linear system over the cells of the event space.
-mutable struct _EventSpace
+# The linear system over the cells of the event space. `T` is Rational{BigInt}
+# when every known value is exact, Float64 otherwise.
+mutable struct _EventSpace{T<:Real}
     vars::Vector{RV}
-    A::Matrix{Float64}
-    b::Vector{Float64}
+    A::Matrix{T}
+    b::Vector{T}
 end
+_exactspace(S::_EventSpace) = eltype(S.b) <: Rational
+_tiny(S::_EventSpace) = _exactspace(S) ? 0 : 1e-12
 
 _ncells(S::_EventSpace) = 2^length(S.vars)
 
@@ -153,10 +160,10 @@ _ncells(S::_EventSpace) = 2^length(S.vars)
 _cellvals(vars, k) = Dict{RV,Any}(v => isodd((k - 1) >> (i - 1)) for (i, v) in enumerate(vars))
 
 function _cellvec(S::_EventSpace, atoms)
-    c = zeros(_ncells(S))
+    c = zeros(Int, _ncells(S))
     for k in 1:_ncells(S)
         vals = _cellvals(S.vars, k)
-        c[k] = all(a -> _holds(a, vals), atoms) ? 1.0 : 0.0
+        c[k] = all(a -> _holds(a, vals), atoms) ? 1 : 0
     end
     return c
 end
@@ -168,7 +175,7 @@ end
 
 # The probability term(s) of a known value, as a linear form c⋅p = rhs.
 function _linform(S::_EventSpace, e::PExpr)
-    e isa Literal && return (fill(Float64(e.value), _ncells(S)))     # c ⋅ p = c, since ∑p = 1
+    e isa Literal && return (fill(e.value, _ncells(S)))     # c ⋅ p = c, since ∑p = 1
     if e isa Prob
         isempty(e.given) || throw(ArgumentError("only unconditional terms inside a sum: $(e)"))
         return _cellvec(S, e.targets)
@@ -183,7 +190,7 @@ function _linform(S::_EventSpace, e::PExpr)
     throw(ArgumentError("cannot use $(e) as a linear fact; give probabilities, sums of them, or one conditional probability"))
 end
 
-function _addvalue!(S::_EventSpace, e::PExpr, v::Float64)
+function _addvalue!(S::_EventSpace, e::PExpr, v::Real)
     if e isa Prob && !isempty(e.given)          # P(T | G) = v  ⇔  P(T ∩ G) - v P(G) = 0
         _addrow!(S, _cellvec(S, vcat(e.targets, e.given)) .- v .* _cellvec(S, e.given), 0.0)
     else
@@ -207,13 +214,18 @@ _exprvars(e::PExpr) = allvars(e)
 
 # Current solution state: a particular solution and the null space.
 function _state(S::_EventSpace)
+    if _exactspace(S)
+        sol = _affine_solutions(S.A, S.b)
+        sol === nothing && throw(ArgumentError("the facts are inconsistent (no probabilities satisfy them all)"))
+        return sol
+    end
     p0 = pinv(S.A) * S.b
     res = maximum(abs, S.A * p0 .- S.b; init=0.0)
     res > 1e-8 && throw(ArgumentError("the facts are inconsistent (no probabilities satisfy them all)"))
     N = nullspace(S.A)
     return p0, N
 end
-_determined(N, c) = maximum(abs, N' * c; init=0.0) < 1e-9
+_determined(N, c) = eltype(N) <: Rational ? all(iszero, N' * c) : maximum(abs, N' * c; init=0.0) < 1e-9
 
 # Independence facts as product equations p(x,y,z) p(z) = p(x,z) p(y,z),
 # added as linear rows whenever three of the four are already determined.
@@ -230,14 +242,15 @@ function _propagate_independence!(S::_EventSpace, f::Facts)
                 d = map(c -> _determined(N, c), (cxyz, cz, cxz, cyz))
                 count(d) == 3 || continue
                 val(c) = dot(c, p0)
+                tiny = _tiny(S)
                 if !d[1]
                     pz = val(cz)
-                    _addrow!(S, cxyz, pz > 1e-12 ? val(cxz) * val(cyz) / pz : 0.0)
-                elseif !d[2] && val(cxyz) > 1e-12
+                    _addrow!(S, cxyz, pz > tiny ? val(cxz) * val(cyz) / pz : 0)
+                elseif !d[2] && val(cxyz) > tiny
                     _addrow!(S, cz, val(cxz) * val(cyz) / val(cxyz))
-                elseif !d[3] && val(cyz) > 1e-12
+                elseif !d[3] && val(cyz) > tiny
                     _addrow!(S, cxz, val(cxyz) * val(cz) / val(cyz))
-                elseif !d[4] && val(cxz) > 1e-12
+                elseif !d[4] && val(cxz) > tiny
                     _addrow!(S, cyz, val(cxyz) * val(cz) / val(cxz))
                 else
                     continue
@@ -273,7 +286,8 @@ _eventspace(f::Facts, extra...) = _eventspace_on(_factvars(f, extra...), f)
 
 function _eventspace_on(vars::Vector{RV}, f::Facts)
     length(vars) > 12 && throw(ArgumentError("deduce handles up to 12 events, got $(length(vars))"))
-    S = _EventSpace(vars, ones(1, 2^length(vars)), [1.0])
+    T = all(kv -> kv.second isa _Exact, f.values) ? Rational{BigInt} : Float64
+    S = _EventSpace{T}(vars, ones(T, 1, 2^length(vars)), T[1])
     for (e, v) in f.values
         _addvalue!(S, e, v)
     end
@@ -289,7 +303,7 @@ end
 
 function _solve_value(e::PExpr, S, p0, N, missingterms)
     if e isa Literal
-        return Float64(e.value)
+        return e.value
     elseif e isa Prob
         num = _cellvec(S, vcat(e.targets, e.given))
         ok = _determined(N, num)
@@ -300,13 +314,13 @@ function _solve_value(e::PExpr, S, p0, N, missingterms)
         den = _cellvec(S, e.given)
         okd = _determined(N, den)
         (ok && okd) || (push!(missingterms, ok ? Prob(e.given, Atom[], e.name) : e); return NaN)
-        return dot(num, p0) / dot(den, p0)
+        return _div(dot(num, p0), dot(den, p0))
     elseif e isa Sum
         return sum(_solve_value(t, S, p0, N, missingterms) for t in e.terms)
     elseif e isa Product
         return prod(_solve_value(t, S, p0, N, missingterms) for t in e.factors)
     elseif e isa Quotient
-        return _solve_value(e.num, S, p0, N, missingterms) / _solve_value(e.den, S, p0, N, missingterms)
+        return _div(_solve_value(e.num, S, p0, N, missingterms), _solve_value(e.den, S, p0, N, missingterms))
     end
     throw(ArgumentError("deduce cannot evaluate $(e)"))
 end
@@ -329,6 +343,11 @@ of the events; [`disjoint`](@ref) and [`implies`](@ref) add more, and
 independence adds product equations as soon as enough is known. If the facts
 do not pin the query down, the result says so (`s.determined == false`) and
 names the unknown terms. Inconsistent facts are an error.
+
+With exact values (`P(A) => 3//10`, or integers) the system is solved in
+rational arithmetic and the answer is an exact `Rational`:
+`deduce(P(A | B), P(B | A) => 9//10, P(A) => 1//100, P(B | A') => 1//20)`
+is `2//13`.
 """
 function deduce(query::PExpr, facts...)
     f = assume(facts...)
@@ -337,7 +356,7 @@ function deduce(query::PExpr, facts...)
     missingterms = PExpr[]
     v = _solve_value(query, S, p0, N, missingterms)
     ok = isempty(missingterms)
-    return Solution(query, ok ? v : NaN, ok, unique(missingterms))
+    return Solution(query, ok ? _shrink(v) : NaN, ok, unique(missingterms))
 end
 
 """
@@ -359,10 +378,11 @@ function cell_probabilities(facts...; events=nothing)
     end
     S = _eventspace_on(vars, f)
     p0, N = _state(S)
-    probs = Union{Nothing,Float64}[]
+    probs = Union{Nothing,Real}[]
     for k in 1:_ncells(S)
-        c = zeros(_ncells(S)); c[k] = 1
-        push!(probs, _determined(N, c) ? max(0.0, dot(c, p0)) : nothing)
+        c = zeros(Int, _ncells(S)); c[k] = 1
+        push!(probs, _determined(N, c) ? _shrink(max(zero(eltype(p0)), dot(c, p0))) : nothing)
+
     end
     return (S.vars, probs)
 end

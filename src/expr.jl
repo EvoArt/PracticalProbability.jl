@@ -343,7 +343,8 @@ end
 function divide(n::PExpr, d::PExpr)
     d isa Literal && d.value == 1 && return n
     n isa Literal && n.value == 0 && return n
-    n isa Literal && d isa Literal && return Literal(n.value / d.value)
+    n isa Literal && d isa Literal && return Literal(_div(n.value, d.value))
+
     return Quotient(n, d)
 end
 

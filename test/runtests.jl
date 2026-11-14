@@ -44,9 +44,19 @@ has_do(::PExpr) = false
     include("counterfactuals.jl")
     include("causation.jl")
     include("transport.jl")
+    include("exact.jl")
+    include("canonical.jl")
+    include("transforms.jl")
+    include("gaussian.jl")
+    include("odds.jl")
+    include("markovchains.jl")
+    include("experiments.jl")
+
     if HAVE_PB
         include("practicalbayes.jl")
     else
         @info "PracticalBayes/Distributions not in the test environment; skipping extension tests"
     end
+    include("quality.jl")
 end
+

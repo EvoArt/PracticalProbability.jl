@@ -68,11 +68,11 @@ struct Facts
     independent::Vector{Independence}
     disjoint::Vector{Disjoint}
     implies::Vector{Implies}
-    values::Vector{Pair{PExpr,Float64}}
+    values::Vector{Pair{PExpr,Real}}
     iid::Vector{IID}
     markov::Vector{Markov}
 end
-Facts() = Facts(Independence[], Disjoint[], Implies[], Pair{PExpr,Float64}[], IID[], Markov[])
+Facts() = Facts(Independence[], Disjoint[], Implies[], Pair{PExpr,Real}[], IID[], Markov[])
 
 function assume(xs...)
     f = Facts()
@@ -83,7 +83,8 @@ end
 _addfact!(f::Facts, x::Independence) = push!(f.independent, x)
 _addfact!(f::Facts, x::Disjoint) = push!(f.disjoint, x)
 _addfact!(f::Facts, x::Implies) = push!(f.implies, x)
-_addfact!(f::Facts, x::Pair{<:PExpr,<:Real}) = push!(f.values, x.first => Float64(x.second))
+_addfact!(f::Facts, x::Pair{<:PExpr,<:Real}) = push!(f.values, x.first => _num(x.second))
+
 _addfact!(f::Facts, x::IID) = push!(f.iid, x)
 _addfact!(f::Facts, x::Markov) = push!(f.markov, x)
 function _addfact!(f::Facts, x::Facts)

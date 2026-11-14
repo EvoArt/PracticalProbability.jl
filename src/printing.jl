@@ -51,7 +51,11 @@ function Base.show(io::IO, p::Prob)
     print(io, ")")
 end
 
-Base.show(io::IO, l::Literal) = print(io, l.value)
+Base.show(io::IO, l::Literal) = print(io, _numstr(l.value))
+# Exact fractions print as `1/6` rather than Julia's `1//6`.
+_numstr(x::Rational) = isone(denominator(x)) ? string(numerator(x)) : string(numerator(x), "/", denominator(x))
+_numstr(x) = string(x)
+
 
 # Terms that print without brackets inside a product or quotient
 # (expectation.jl adds E[⋯], Var(⋯), …).

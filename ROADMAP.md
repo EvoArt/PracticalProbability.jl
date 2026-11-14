@@ -22,12 +22,45 @@ can later sit on top of that CAS core without depending on Symbolics.
       "between 0.1 and 0.3"), and mutual vs pairwise independence of events.
 - [ ] Distribution families in expressions (`p(x | θ) = Normal(x; μ, σ)`) and
       conjugate updates done symbolically.
+- [x] Transformations of random variables: `laws(X => Family(…))` and `law(g(X, Y))`
+      for affine maps, sums of independent variables (Normal, Cauchy, Poisson,
+      Gamma/Exponential, Binomial/Bernoulli), `exp`/`log`, squares of centred
+      Normals (χ²) and minima of Exponentials/Geometrics; densities and CDFs
+      (`PDF`, `CDF`), `change_of_variables` and `jacobian`, `order_statistic`.
+- [x] Generating functions: `MGF`, `PGF`, `CF` of families and of linear
+      combinations of independent variables (`M_{X+Y} = M_X M_Y`); moments and
+      cumulants from them (`rawmoment`, `centralmoment`, `cumulant`).
+- [x] Gaussian algebra: `Gaussian` with symbolic means and covariances,
+      `marginal`, `conditional` (Schur complement, brought to lowest terms),
+      `regression`; linear-Gaussian SEMs (`linear_sem`): path tracing
+      (`total_effect`, `implied_covariance`), `intervene`, confounding bias of a
+      regression vs adjustment; the Kalman step as Gaussian conditioning.
+- [x] Exact arithmetic: rational tables stay rational through `compute`,
+      `deduce` solves in rational arithmetic, literals print as `1/6`;
+      `rand_bayesnet(…; exact = true)` checks identities with `==`.
+- [x] Odds form of Bayes' rule: `odds`, `likelihood_ratio`, `bayes_factor`,
+      `bayes_odds` (posterior odds = likelihood ratio × prior odds), `log_odds`
+      and `weight_of_evidence` (evidence adds on the log scale).
+- [x] Discrete Markov chains (`MarkovChain`): stationary distributions,
+      communicating classes and periods, hitting probabilities and expected
+      hitting times (gambler's ruin exactly), the chain unrolled into a `BayesNet`.
+- [x] Experiment builders: `experiment` with `die`, `coin`, `uniform`,
+      `categorical`, `depends_on`, `derived`, urns and cards (`urn`, `deck`,
+      `draws` with or without replacement): Monty Hall, dice sums and urn
+      problems without writing tables.
 - [x] Expectations `E[f | Y]`, `Var`, `Cov`: linearity, taking out what is
       known, tower property, independence, total variance; exact numbers.
-- [ ] Moments of standard distributions (`E[X] = μ` for `X ~ Normal(μ, σ)`),
-      and expectations over continuous variables from PracticalBayes chains.
-- [ ] Canonical forms and a smarter `simplify` (search over rule orders, not
-      only first-match).
+- [x] Moments of standard distributions in `simplify` (`E[X] = μ` for
+      `X ~ Normal(μ, σ)`, `E[X²]`, `Var(X)`, `E[exp(tX)]` from the MGF), with
+      independence read from the laws.
+- [ ] Expectations over continuous variables from PracticalBayes chains.
+- [x] Canonical forms: `expand` and `canonical` (polynomials in atoms, sorted
+      arguments and terms), `simplify(::RExpr)` to lowest terms by
+      multivariate polynomial division, `derivative`, `substitute`; and
+      `simplify(…; search = true)`, a beam search over rule orders for the
+      smallest normal form instead of first match.
+- [ ] Polynomial GCDs (lowest terms when the denominator doesn't divide the
+      numerator), and a canonical form shared with the future CAS core.
 - [x] Plates and indexed variables (`y[i]`, `x[t-1]`, `x[1:t]`, `∏ᵢ`),
       `sequence`/`peel`, `iid`/`markov` facts, `unroll`; models with loops.
 - [ ] d-separation on plated graphs (templates) without unrolling.
@@ -68,6 +101,16 @@ GES) are out of scope; CausalInference.jl covers those.
 - [x] Recoverability beyond adjustment: identify the query (hidden variables
       allowed) and recover each term from the biased data, external data or a
       term-level adjustment (front-door cases).
+- [ ] Adjustment sets: enumerate the minimal valid back-door sets, and the
+      optimal adjustment set (Henckel–Perković–Maathuis), for a DAG or ADMG.
+- [ ] General LP bounds for non-identifiable queries (Balke–Pearl), e.g. the
+      instrumental-variable bounds, generalising the Tian–Pearl bounds; the same
+      LP gives `deduce` its "between 0.1 and 0.3" answers.
+- [ ] Testable implications of a graph: its conditional independences, Verma
+      constraints of an ADMG (nested Markov), and Markov equivalence (are two
+      DAGs equivalent? the CPDAG). Symbolic only; no structure learning.
+- [ ] Identification in linear SEMs: instrumental variables and the
+      half-trek criterion, on top of the Gaussian algebra.
 - [x] The papers' criteria in `recover`: P(y | x) without external data iff
       `Y ⟂ S | X` (BTP 2014, Thm 1); with external data the one-test
       separator conditions (Thms 2–3, Cors 3–5) and the selection-backdoor
@@ -162,3 +205,11 @@ ComplexityMeasures.jl and Associations.jl cover those.
 - [ ] Drawings for the front-door and latent-variable cases once ID/IDC exists.
 - [ ] Documenter.jl site with worked examples (Monty Hall, Simpson's paradox,
       front-door, hierarchical models).
+
+### Infrastructure
+- [x] Version control (git).
+- [ ] The package on GitHub with CI running the tests.
+
+- [x] Static checks in the test suite: Aqua (ambiguities, unbound parameters,
+      stale dependencies, compat, piracy) and JET (provable errors).
+

@@ -24,6 +24,8 @@ using Tables: Tables
 
 include("atoms.jl")
 include("expr.jl")
+include("linalg.jl")
+
 include("graph.jl")
 include("facts.jl")
 include("rules.jl")
@@ -47,6 +49,12 @@ include("draw/tree.jl")
 include("draw/venn.jl")
 include("draw/factor.jl")
 include("information.jl")
+include("canonical.jl")       # after information.jl: uses its special functions
+include("transforms.jl")
+include("gaussian.jl")
+include("odds.jl")
+include("markovchain.jl")
+include("experiments.jl")
 include("admg.jl")
 include("shannon.jl")
 include("counterfactual.jl")
@@ -119,6 +127,24 @@ export latent_projection, NotIdentifiable, isidentifiable, hedge
 export Counterfactual, rand_scm, CFBounds, bounds, pns, pn, ps, mediation
 export transport, istransportable, NotTransportable, recover, isrecoverable, NotRecoverable
 export Domain, zidentify, iszidentifiable
+# canonical forms and the algebra of random quantities
+export canonical, derivative, RExt
+# distributions of transformed variables
+export Laws, laws, law, MGF, PGF, CF, PDF, CDF, rawmoment, centralmoment, cumulant
+export change_of_variables, jacobian, order_statistic
+# Gaussian algebra
+export Gaussian, marginal, conditional, regression, LinearSEM, linear_sem, total_effect
+export implied_covariance, intervene, kalman_step
+# odds
+export odds, likelihood_ratio, bayes_factor, bayes_odds, log_odds, weight_of_evidence
+export probability_from_odds, odds_from_probability
+# Markov chains
+export MarkovChain, transition_matrix, nstep, distribution, communicating_classes
+export isirreducible, isaperiodic, stationary, hitting_probability, hitting_time, mean_return_time
+# experiments
+export experiment, Outcomes, uniform, die, coin, bernoulli, categorical, depends_on, derived
+export Urn, urn, deck, draws
+
 
 
 include("draw/precompile.jl")   # after everything: it uses the whole API

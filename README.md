@@ -144,6 +144,67 @@ total_variance(Var(Y), X)          # E[Var(Y | X)] + Var(E[Y | X])
 compute(Var(Y), bn)                # exact, for numeric values
 ```
 
+### Algebra of random quantities
+
+Random quantities have a canonical polynomial form, derivatives, and lowest
+terms by polynomial division:
+
+```julia
+@rv a b c
+expand((X + Y)^2)                  # X² + 2X Y + Y²
+simplify((a*b + a*c) / a)          # b + c
+derivative(log(X^2 + 1), X)        # 2X (X² + 1)⁻¹
+substitute(exp(X * Y), Y => 0)     # 1
+canonical(P(B, A | D, C))          # P(A, B | C, D): equal expressions print the same
+simplify(e; search = true)         # search over rule orders for the smallest form
+```
+
+## Distributions, moments and generating functions
+
+`laws` says how variables are distributed (independent unless stated
+otherwise). Then `law` gives the distribution of a transformed variable,
+`MGF`/`PGF`/`CF` its generating functions, and `simplify` fills in moments:
+
+```julia
+@rv X::continuous Y::continuous t::continuous y::continuous μ::continuous σ::continuous λ::continuous
+L = laws(X => Family(:Normal, 1, 2), Y => Family(:Normal, -1, 3))
+law(2X + Y + 3, L)                        # Normal(4.0, 5.0)
+law(exp(X), L)                            # LogNormal(1.0, 2.0)
+law(X^2 + Y^2, laws(X => Family(:Normal, 0, 1), Y => Family(:Normal, 0, 1)))   # Gamma(1, 0.5) = χ²₂
+law(min(X, Y), laws(X => Family(:Exponential, λ), Y => Family(:Exponential, 2)))  # Exponential(λ + 2)
+
+MGF(Family(:Normal, μ, σ), t)             # exp(μ t + 1/2 σ² t²)
+MGF(2X + Y, L, t)                         # M_X(2t) M_Y(t)
+CF(Family(:Cauchy, 0, 1), t)              # exp(-|t|)
+rawmoment(Family(:Normal, μ, σ), 4)       # μ⁴ + 6μ² σ² + 3σ⁴, from the MGF
+cumulant(Family(:Poisson, λ), 3)          # λ
+
+simplify(E(X^2 + 3Y), laws(X => Family(:Normal, μ, σ), Y => Family(:Poisson, λ)))   # (μ² + σ²) + 3λ
+
+PDF(Family(:Gamma, 2, 1), y)              # densities and CDFs as random quantities
+CDF(Family(:Normal, 0, 1), 1.96)          # 0.975 (Φ)
+change_of_variables(Family(:Normal, 0, 1), X, exp(X), y)   # the LogNormal density
+order_statistic(Family(:Exponential, λ), 1, 3, y)        # the minimum of three: 3λ e^{-3λy}
+```
+
+## Gaussians and linear SEMs
+
+Jointly Normal variables with symbolic means and covariances condition by the
+Schur complement. A linear-Gaussian SEM gives its covariances by path tracing
+and shows confounding bias exactly:
+
+```julia
+@rv X::continuous Y::continuous Z::continuous a::continuous b::continuous c::continuous
+sem = linear_sem(Z => 0, X => a * Z, Y => b * X + c * Z)
+total_effect(sem, X, Y)                   # b
+total_effect(sem, Z, Y)                   # a b + c: two directed paths
+regression(Gaussian(sem), Y, [X])         # slope b + a c ω_Z / (a² ω_Z + ω_X): biased
+regression(Gaussian(sem), Y, [X, Z])      # slopes b and c: the back-door adjustment
+Gaussian(intervene(sem, X => 1))          # the law under do(X = 1)
+conditional(Gaussian([X, Y], [0, 0], [1 0.5; 0.5 1]), X, [Y => 2])
+kalman_step(m = 0, P = 1, a = 1, q = 1, c = 1, r = 1, y = 2)   # gain 2/3, mean 4/3
+```
+
 ## Plates and sequences
 
 Indexed variables and products over an index, for models (`∏ᵢ p(yᵢ | θ)`) and
@@ -284,6 +345,70 @@ compute(Σ(X, q(X) * P(X) / q(X)), Dict(:P => bn_p, :q => bn_q))   # 1.0
 ```
 
 (It is `compute`, not `evaluate`, because PracticalBayes exports an `evaluate`.)
+
+### Exact answers
+
+Tables of integers or rationals stay exact through `compute`, and `deduce`
+solves in rational arithmetic when the known values are rational:
+
+```julia
+@event H D
+bn = BayesNet(H => 1//100, (D | H) => [9//10, 1//20])
+compute(P(H | D), bn)                        # 2//13
+deduce(P(H | D), P(D | H) => 9//10, P(H) => 1//100, P(D | H') => 1//20)   # P(H | D) = 2/13
+rand_bayesnet(g; exact = true)               # identities checked with ==, not ≈
+```
+
+### Odds
+
+Bayes' rule in odds form needs no normalising constant, and evidence adds on
+the log scale:
+
+```julia
+bayes_odds(P(H | D))                  # [P(D | H) / P(D | Hᶜ)] [P(H) / P(Hᶜ)]
+compute(odds(P(H | D)), bn)           # 2//11
+likelihood_ratio(D, H)                # P(D | H) / P(D | Hᶜ)
+log_odds(P(H | D))                    # log prior odds + weight_of_evidence(D, H)
+probability_from_odds(2//11)          # 2//13
+```
+
+## Experiments
+
+Describe a chance experiment and get its Bayesian network, with exact
+probabilities:
+
+```julia
+@rv D1 D2 S Car Pick Host C1 C2
+@event Doubles
+dice = experiment(D1 => die(), D2 => die(), S => derived(+, D1, D2),
+                  Doubles => derived(==, D1, D2))
+compute(P(S(7)), dice)                       # 1//6
+compute(P(Doubles | S(8)), dice)             # 1//5
+
+monty = experiment(Car => uniform(1:3), Pick => uniform(1:3),
+                   Host => depends_on((c, p) -> uniform(setdiff(1:3, [c, p])), Car, Pick))
+compute(P(Car(2) | Pick(1), Host(3)), monty) # 2//3: switch
+
+balls = experiment(draws(urn(:red => 3, :blue => 2), C1, C2))   # without replacement
+compute(P(C1(:red) | C2(:blue)), balls)      # 3//4
+experiment(draws(deck(), C1, C2))            # cards are (rank, suit)
+```
+
+## Markov chains
+
+Finite chains, solved exactly:
+
+```julia
+weather = MarkovChain([1//2 1//2; 1//4 3//4]; states = [:sun, :rain])
+stationary(weather)                    # [1//3, 2//3]
+mean_return_time(weather, :sun)        # 3
+communicating_classes(chain)           # states, recurrent or transient, period
+hitting_probability(ruin, 4)           # gambler's ruin: [0, 1//4, 1//2, 3//4, 1]
+hitting_time(ruin, [0, 4])             # [0, 3, 4, 3, 0]
+bn = BayesNet(weather, W, 3; init = [1, 0])
+compute(P(W[3](:rain) | W[1](:sun)), bn)   # 5//8
+```
+
 
 ## Output
 

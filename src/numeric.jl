@@ -10,16 +10,36 @@ per variable. The result of [`compute`](@ref) whenever the expression still
 has free variables. Implements the Tables.jl interface (one row per
 assignment), so it prints as a table and converts to a `DataFrame`.
 
+Values keep the number type of the network: a network with `Rational`
+tables (or [`experiment`](@ref)) gives exact rational results.
+
 Index it with values: `f[A = 1, B = 2]` or `f(A => 1, B => 2)`.
 """
 struct Factor
     vars::Vector{RV}
     domains::Vector{Vector{Any}}
-    values::Array{Float64}
+    values::Array{<:Real}
     label::String
 end
 Factor(vars, domains, values) = Factor(vars, domains, values, "")
-_scalar_factor(x::Real, label="") = Factor(RV[], Vector{Any}[], fill(Float64(x)), label)
+_scalar_factor(x::Real, label="") = Factor(RV[], Vector{Any}[], fill(_num(x)), label)
+
+# Exact arithmetic: integers and rationals divide to rationals, so a network
+# with rational tables gives exact answers. Bool counts as an integer.
+_num(x::Bool) = Int(x)
+_num(x::Real) = x
+const _Exact = Union{Integer,Rational}
+_div(a, b) = a / b
+_div(a::_Exact, b::_Exact) = iszero(b) ? NaN : a // b
+# A table as an array with an exact element type where it is exact.
+function _tablearray(t)
+    A = t isa Real ? fill(t) : identity.(collect(t))     # identity. narrows `Any` eltypes
+    eltype(A) <: Rational && return A
+    all(x -> x isa _Exact, A) && return Rational{Int}.(A)    # integers, or a mix of integers and rationals
+
+    eltype(A) <: Real || throw(ArgumentError("a probability table must contain numbers"))
+    return float.(A)
+end
 
 _relabel(f::Factor, label) = Factor(f.vars, f.domains, f.values, label)
 
@@ -53,7 +73,7 @@ function _combine(op, f::Factor, g::Factor)
 end
 
 Base.:*(f::Factor, g::Factor) = _combine(*, f, g)
-Base.:/(f::Factor, g::Factor) = _combine(/, f, g)
+Base.:/(f::Factor, g::Factor) = _combine(_div, f, g)
 Base.:+(f::Factor, g::Factor) = _combine(+, f, g)
 Base.:-(f::Factor, g::Factor) = _combine(-, f, g)
 
@@ -88,7 +108,7 @@ end
 Base.getindex(f::Factor; kw...) = _value_index(f, [(k, v) for (k, v) in kw])
 (f::Factor)(ps::Pair...) = _value_index(f, [(p.first, p.second) for p in ps])
 
-Base.Float64(f::Factor) = isempty(f.vars) ? f.values[] : throw(ArgumentError("factor still depends on $(f.vars)"))
+Base.Float64(f::Factor) = isempty(f.vars) ? Float64(f.values[]) : throw(ArgumentError("factor still depends on $(f.vars)"))
 Base.convert(::Type{Float64}, f::Factor) = Float64(f)
 
 function Base.isapprox(f::Factor, g::Factor; kwargs...)
@@ -125,6 +145,9 @@ A named event (`@event A`) is a yes/no variable with values `[true, false]`,
 and its table may give just the probability that it happens: `A => 0.3` is
 `P(A) = 0.3`, and `(B | A) => [0.9, 0.2]` is `P(B | A) = 0.9`,
 `P(B | Aᶜ) = 0.2`.
+
+Tables of integers or `Rational`s are kept exact (`X => [1//3, 2//3]`), and
+then [`compute`](@ref) returns exact rationals.
 """
 struct BayesNet
     dag::DAG
@@ -135,7 +158,7 @@ const _EVENT_DOMAIN = Any[true, false]
 
 function BayesNet(specs::Pair...; domains::AbstractDict=Dict{RV,Any}(), atol::Real=1e-8)
     doms = Dict{RV,Vector{Any}}(k => collect(Any, v) for (k, v) in domains)
-    raw = Tuple{RV,Vector{RV},Array{Float64}}[]
+    raw = Tuple{RV,Vector{RV},Array}[]
     for (lhs, tbl) in specs
         if lhs isa RV
             v, ps = lhs, RV[]
@@ -144,7 +167,7 @@ function BayesNet(specs::Pair...; domains::AbstractDict=Dict{RV,Any}(), atol::Re
         else
             throw(ArgumentError("a CPT is written `A => table` or `(A | B, C) => table`, got $(lhs)"))
         end
-        T = tbl isa Real ? fill(Float64(tbl)) : Array{Float64}(tbl)
+        T = _tablearray(tbl)
         # an event's table may give only P(event happens | parents)
         if isevent(v) && ndims(T) == length(ps)
             # `map`, not `1 .- T`: broadcasting over a 0-dim array returns a scalar
@@ -186,19 +209,25 @@ function BayesNet(specs::Pair...; domains::AbstractDict=Dict{RV,Any}(), atol::Re
 end
 
 """
-    rand_bayesnet(g::DAG; card = 2, rng = Random.default_rng()) -> BayesNet
+    rand_bayesnet(g::DAG; card = 2, rng = Random.default_rng(), exact = false) -> BayesNet
 
 A network on the graph `g` with random CPTs; every variable takes values
 `1:card` (events: `true`/`false`). Useful for checking a symbolic identity
-numerically.
+numerically. With `exact = true` the tables are small-denominator rationals,
+so identities can be checked with `==` rather than up to rounding.
 """
-function rand_bayesnet(g::DAG; card::Integer=2, rng::AbstractRNG=Random.default_rng())
+function rand_bayesnet(g::DAG; card::Integer=2, rng::AbstractRNG=Random.default_rng(), exact::Bool=false)
     specs = Pair[]
     n(v) = isevent(v) ? 2 : card
     for v in topological_order(g)
         ps = g.parents[v]
-        T = rand(rng, n(v), map(n, ps)...) .+ 0.05
-        T ./= sum(T; dims=1)
+        if exact
+            W = rand(rng, 1:9, n(v), map(n, ps)...)
+            T = W .// sum(W; dims=1)
+        else
+            T = rand(rng, n(v), map(n, ps)...) .+ 0.05
+            T ./= sum(T; dims=1)
+        end
         push!(specs, (isempty(ps) ? v : Given(Atom[v], Atom[ps...])) => T)
     end
     return BayesNet(specs...)
@@ -298,12 +327,12 @@ _checkvalues(::Atom, bn) = nothing
 function _indicator(e::Atom, bn::BayesNet)
     _checkvalues(e, bn)
     vs = rvs(e)
-    isempty(vs) && return _scalar_factor(_holds(e, Dict{RV,Any}()) ? 1.0 : 0.0)
+    isempty(vs) && return _scalar_factor(_holds(e, Dict{RV,Any}()) ? 1 : 0)
     doms = Vector{Any}[domain(bn, v) for v in vs]
-    vals = Array{Float64}(undef, map(length, doms)...)
+    vals = Array{Int}(undef, map(length, doms)...)
     for idx in CartesianIndices(vals)
         assignment = Dict{RV,Any}(v => doms[k][idx[k]] for (k, v) in enumerate(vs))
-        vals[idx] = _holds(e, assignment) ? 1.0 : 0.0
+        vals[idx] = _holds(e, assignment) ? 1 : 0
     end
     return Factor(vs, doms, vals)
 end
@@ -349,7 +378,7 @@ function _cond_factor(bn::BayesNet, name::Symbol, free::Vector{RV}, targetev::Ve
         v in bn.dag.nodes || throw(ArgumentError("$(v.name) is not in the network for $(name)"))
     end
     X = Set(rv(a) for a in given if a isa Intervention)
-    J = reduce(*, (bn.cpts[v] for v in topological_order(bn.dag) if !(v in X)); init=_scalar_factor(1.0))
+    J = reduce(*, (bn.cpts[v] for v in topological_order(bn.dag) if !(v in X)); init=_scalar_factor(1))
     # Events (anything but a free variable) enter as indicator factors.
     ev(a) = a isa Intervention ? a.target : a
     givenev = [ev(a) for a in given if freerv(ev(a)) === nothing]
@@ -364,7 +393,7 @@ function _cond_factor(bn::BayesNet, name::Symbol, free::Vector{RV}, targetev::Ve
     for v in keep_num
         if !(v in out.vars)
             d = domain(bn, v)
-            out = out * Factor(RV[v], Vector{Any}[d], ones(length(d)))
+            out = out * Factor(RV[v], Vector{Any}[d], ones(Int, length(d)))
         end
     end
     return out

@@ -185,7 +185,9 @@ struct SimplifyContext
     dags::Dict{Symbol,DAG}
     combine::Bool
     facts::Facts
+    laws::Any              # `Laws` (transforms.jl) or nothing
 end
+SimplifyContext(dags, combine, facts) = SimplifyContext(dags, combine, facts, nothing)
 _dags(::Nothing) = Dict{Symbol,DAG}()
 _dags(g::DAG) = Dict{Symbol,DAG}(:P => g)
 _dags(d::AbstractDict) = Dict{Symbol,DAG}(Symbol(k) => _asdag(v) for (k, v) in d)
@@ -626,21 +628,34 @@ never combined.
 
 With `trace = true` returns a [`Derivation`](@ref) recording each step and its
 justification.
+
+By default the first rule that applies is taken at each step. With
+`search = true` the order of the rules is searched instead (a beam search of
+width `beam` over every rule at every position), and the smallest expression
+no rule rewrites further is returned; the first-match result is kept when
+nothing smaller is found.
+
+`laws` ([`laws`](@ref)) gives the distributions of variables, so that
+moments of standard distributions are filled in (`E[X] = μ` for
+`X ~ Normal(μ, σ)`).
 """
 function simplify(e::PExpr; dag=nothing, assume=nothing, combine::Bool=true,
-                  trace::Bool=false, maxsteps::Integer=200)
-    _held() && return _unheld(() -> simplify(e; dag, assume, combine, trace, maxsteps))
-    ctx = SimplifyContext(_dags(dag), combine, _facts(assume))
+                  trace::Bool=false, maxsteps::Integer=200, search::Bool=false, beam::Integer=6,
+                  laws=nothing)
+    _held() && return _unheld(() -> simplify(e; dag, assume, combine, trace, maxsteps, search, beam, laws))
+    ctx = SimplifyContext(_dags(dag), combine, _facts(assume), laws)
     d = derivation(e)
     for _ in 1:maxsteps
         out = _rewrite_once(last(d), ctx)
         out === nothing && break
         _push!(d, out[1], out[2])
     end
+    search && (d = _search_simplify(e, ctx, d, maxsteps, beam))     # canonical.jl
     return trace ? d : last(d)
 end
 simplify(e::PExpr, g::Union{DAG,AbstractDict}; kwargs...) = simplify(e; dag=g, kwargs...)
 simplify(e::PExpr, f::Facts; kwargs...) = simplify(e; assume=f, kwargs...)
+
 
 # ---------------------------------------------------------------------------
 # Expressing queries through a DAG's factorisation

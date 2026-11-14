@@ -20,7 +20,7 @@ function _numbers(; bn=nothing, facts=nothing, samples=nothing)
             return x isa Factor ? (isempty(x.vars) ? Float64(x.values[]) : nothing) : Float64(x)
         elseif fs !== nothing
             s = deduce(e, fs...)
-            return s.determined ? s.value : nothing
+            return s.determined ? Float64(s.value) : nothing
         elseif samples !== nothing
             return Float64(compute(e, samples))
         end

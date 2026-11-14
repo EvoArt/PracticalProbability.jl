@@ -114,7 +114,9 @@ function rmul(xs::RExpr...)
         end
     end
     c == 0 && return RConst(0)
+    c isa Complex && iszero(imag(c)) && (c = real(c))
     fs = RExpr[rpow(b, p) for (b, p) in zip(bases, exps) if p != 0]
+
     c != 1 && pushfirst!(fs, RConst(c))
     isempty(fs) && return RConst(c)
     length(fs) == 1 && return fs[1]
@@ -122,15 +124,23 @@ function rmul(xs::RExpr...)
 end
 
 function rpow(b::RExpr, p::Number)
+    p isa Rational && isone(denominator(p)) && (p = numerator(p))     # 2//1 is the integer 2
     p == 0 && return RConst(1)
+
     p == 1 && return b
-    b isa RConst && return RConst(b.value^p)
+    b isa RConst && return RConst(_numpow(b.value, p))
     b isa RPow && return rpow(b.base, b.p * p)
     b isa RInd && p > 0 && return b                # 𝟙(A)ᵖ = 𝟙(A)
     return RPow(b, p)
 end
 
+# Powers of numbers that stay exact (2^-1 is 1//2, not a DomainError).
+_numpow(a::Union{Integer,Rational}, p::Integer) = p < 0 ? (a // 1)^p : a^p
+_numpow(a::Union{Integer,Rational}, p::Rational) = isinteger(p) ? _numpow(a, Integer(p)) : float(a)^p
+_numpow(a, p) = a^p
+
 const _R = Union{RV,RExpr}
+
 Base.:+(a::_R, b::_R) = radd(_r(a), _r(b))
 Base.:+(a::Number, b::_R) = radd(_r(a), _r(b))
 Base.:+(a::_R, b::Number) = radd(_r(a), _r(b))
@@ -141,7 +151,7 @@ Base.:-(a::_R, b::Number) = radd(_r(a), RConst(-b))
 Base.:*(a::_R, b::_R) = rmul(_r(a), _r(b))
 Base.:*(a::Number, b::_R) = rmul(_r(a), _r(b))
 Base.:*(a::_R, b::Number) = rmul(_r(a), _r(b))
-Base.:/(a::_R, b::Number) = rmul(_r(a), RConst(1 / b))
+Base.:/(a::_R, b::Number) = rmul(_r(a), RConst(_div(1, b)))
 Base.:/(a::_R, b::_R) = rmul(_r(a), rpow(_r(b), -1))
 Base.:/(a::Number, b::_R) = rmul(RConst(a), rpow(_r(b), -1))
 Base.:^(a::_R, p::Number) = rpow(_r(a), p)
@@ -408,7 +418,10 @@ function _independent(ctx::SimplifyContext, name::Symbol, A::Vector{RV}, B::Vect
     end
     s = _assumed_indep(ctx.facts, A, B, C)
     s === nothing || return "$(sprint(show, s)) (assumed)"
+    _laws_independent(ctx.laws, name, A, B) &&                   # transforms.jl
+        return string(_str(A), " ⟂ ", _str(B), " (independent laws)")
     return nothing
+
 end
 
 _rfactors(f::RExpr) = f isa RMul ? f.factors : RExpr[f]
@@ -535,7 +548,7 @@ _ratomic(x::Union{RVal,RConst,RInd,RFun,RQ}) = !(x isa RConst && x.value < 0)
 _ratomic(::RExpr) = false
 
 _rstr(x::RVal) = string(x.rv.name)
-_rstr(x::RConst) = string(x.value)
+_rstr(x::RConst) = _numstr(x.value)
 _rstr(x::RInd) = string("𝟙(", _astr(x.event), ")")
 _rstr(x::RFun) = string(x.f, "(", _rstr(x.arg), ")")
 _rstr(x::RQ) = sprint(show, x.e)
@@ -545,7 +558,7 @@ function _rstr(x::RMul)
     s = ""
     for (i, f) in enumerate(fs)
         if i == 1 && f isa RConst
-            s *= f.value == -1 ? "-" : string(f.value)
+            s *= f.value == -1 ? "-" : _numstr(f.value)
             continue
         end
         part = f isa RAdd ? "(" * _rstr(f) * ")" : _rstr(f)
@@ -632,11 +645,12 @@ function _numeric_domain(bn::BayesNet, v::RV)
     return d
 end
 
-_rfactor(x::RVal, nets) = (d = _numeric_domain(_anynet(nets), x.rv); Factor(RV[x.rv], Vector{Any}[d], Float64.(d)))
+_rfactor(x::RVal, nets) = (d = _numeric_domain(_anynet(nets), x.rv); Factor(RV[x.rv], Vector{Any}[d], identity.(d)))
+
 _rfactor(x::RConst, nets) = _scalar_factor(x.value)
 _rfactor(x::RAdd, nets) = reduce(+, (_rfactor(t, nets) for t in x.terms))
 _rfactor(x::RMul, nets) = reduce(*, (_rfactor(t, nets) for t in x.factors))
-_rfactor(x::RPow, nets) = _fmap(y -> y^x.p, _rfactor(x.base, nets))
+_rfactor(x::RPow, nets) = _fmap(y -> _numpow(y, x.p), _rfactor(x.base, nets))
 _rfactor(x::RFun, nets) = _fmap(_rfunction(x.f), _rfactor(x.arg, nets))   # _rfunction: information.jl
 _rfactor(x::RInd, nets) = _indicator(x.event, _anynet(nets))
 _rfactor(x::RQ, nets) = _eval(x.e, nets)

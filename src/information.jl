@@ -739,8 +739,33 @@ function _digamma(x::Real)
     return r + log(x) - 0.5 / x - f * (1 / 12 - f * (1 / 120 - f * (1 / 252 - f * (1 / 240 - f * (1 / 132)))))
 end
 # numeric functions behind RFun names (used by compute and evaluate)
-_rfunction(f::Symbol) = f === :loggamma ? _loggamma : f === :digamma ? _digamma : getfield(Base, f)
-_lxfname(f::Symbol) = f === :loggamma ? "\\log\\Gamma" : f === :digamma ? "\\psi" : string("\\", f)
+_rfunction(f::Symbol) = f === :loggamma ? _loggamma : f === :digamma ? _digamma :
+                        f === :Phi ? _normcdf : getfield(Base, f)
+
+const _LXFNAMES = Dict(:loggamma => "\\log\\Gamma", :digamma => "\\psi", :Phi => "\\Phi",
+                       :atan => "\\arctan", :sign => "\\operatorname{sign}")
+_lxfname(f::Symbol) = get(_LXFNAMES, f, string("\\", f))
+
+# The standard normal CDF Φ, through erfc: a Taylor series for small
+# arguments and a continued fraction in the tails (both to ~1e-15).
+function _erfc(x::Float64)
+    x < 0 && return 2 - _erfc(-x)
+    if x < 2.5
+        s, t, n = 0.0, x, 0
+        while abs(t) > 1e-17 * max(abs(s), 1e-300) || n < 3
+            s += t / (2n + 1)
+            n += 1
+            t *= -x^2 / n
+        end
+        return 1 - 2 / sqrt(π) * s
+    end
+    f = 0.0                                       # Lentz-free backward evaluation
+    for k in 60:-1:1
+        f = (k / 2) / (x + f)
+    end
+    return exp(-x^2) / sqrt(π) / (x + f)
+end
+_normcdf(x::Real) = 0.5 * _erfc(-float(x) / sqrt(2))
 
 """
     Family(name, params...)
@@ -761,7 +786,14 @@ closed-form [`H`](@ref) (differential entropy for continuous families) and
 | `:Poisson` | rate `λ` (KL only) |
 | `:Geometric` | success probability `p` (on 1, 2, …) |
 | `:Bernoulli` | `p` |
+| `:Binomial` | number of trials `n`, success probability `p` (KL only) |
+| `:LogNormal` | `μ`, `σ` of the logarithm |
+| `:Cauchy` | location `x₀`, scale `γ` |
 | `:MvNormal` | mean vector and covariance matrix, numbers only |
+
+Distributions of transformed variables ([`law`](@ref)), moments, generating
+functions ([`MGF`](@ref), [`PGF`](@ref), [`CF`](@ref)), densities
+([`PDF`](@ref), [`CDF`](@ref)) use the same families.
 
 Parameters are numbers, variables (`@rv μ::continuous`) or random quantities
 (`2μ + 1`); the results are random quantities that fold to numbers when every
@@ -774,7 +806,7 @@ struct Family
 end
 const _FAMILIES = Dict(:Normal => 2, :Laplace => 2, :Uniform => 2, :Exponential => 1, :Gamma => 2,
                        :Beta => 2, :Dirichlet => 1, :Poisson => 1, :Geometric => 1, :Bernoulli => 1,
-                       :MvNormal => 2)
+                       :MvNormal => 2, :LogNormal => 2, :Cauchy => 2, :Binomial => 2)
 _fparam(p::Integer) = RConst(float(p))       # floats, so negative powers of integers are fine
 _fparam(p) = _r(p)
 function Family(name::Symbol, params...)
@@ -787,8 +819,11 @@ function Family(name::Symbol, params...)
         (μ isa AbstractVector{<:Real} && Σ isa AbstractMatrix{<:Real} && size(Σ) == (length(μ), length(μ))) ||
             throw(ArgumentError("MvNormal takes a numeric mean vector and a matching covariance matrix"))
         return Family(name, Any[float.(μ), float.(Σ)])
+    elseif name === :Binomial          # the number of trials stays an integer
+        return Family(name, Any[_r(params[1]), _fparam(params[2])])
     elseif name === :Dirichlet
         αs = params[1]
+
         (αs isa AbstractVector && length(αs) >= 2) ||
             throw(ArgumentError("Dirichlet takes a vector of at least two concentrations"))
         return Family(name, Any[RExpr[_fparam(a) for a in αs]])
@@ -802,7 +837,15 @@ _fstr(p) = string(p)
 Base.show(io::IO, f::Family) = print(io, f.name, "(", join(map(_fstr, f.params), ", "), ")")
 
 # arithmetic on random quantities that folds numbers
-_rf(f::Symbol, x::RExpr) = x isa RConst ? RConst(_rfunction(f)(x.value)) : RFun(f, x)
+function _rf(f::Symbol, x::RExpr)
+    x isa RConst && f === :exp && iszero(x.value) && return RConst(1)    # exactly
+    x isa RConst && f === :log && isone(x.value) && return RConst(0)
+    x isa RConst && return RConst(_rfunction(f)(x.value))
+
+    f === :log && x isa RFun && x.f === :exp && return x.arg       # log(exp(a)) = a
+    f === :exp && x isa RFun && x.f === :log && return x.arg       # exp(log(a)) = a
+    return RFun(f, x)
+end
 _rlog(x::RExpr) = _rf(:log, x)
 _rlgamma(x::RExpr) = _rf(:loggamma, x)
 _rdigamma(x::RExpr) = _rf(:digamma, x)
@@ -850,8 +893,12 @@ function H(f::Family)
         Σ = p[2]
         k = size(Σ, 1)
         return _rc(0.5 * (k * log(2π * ℯ) + logdet(Σ)))
+    elseif n === :LogNormal
+        return radd(p[1], _rc(0.5 * log(2π * ℯ)), _rlog(p[2]))
+    elseif n === :Cauchy
+        return radd(_rc(log(4π)), _rlog(p[2]))
     end
-    throw(ArgumentError("no closed-form entropy for $(n) (it involves an infinite series)"))
+    throw(ArgumentError("no closed-form entropy for $(n)"))
 end
 
 function KL(f::Family, g::Family)
@@ -914,15 +961,27 @@ function KL(f::Family, g::Family)
         S2 = inv(Σ2)
         d = μ2 - μ1
         return _rc(0.5 * (tr(S2 * Σ1) + dot(d, S2 * d) - k + logdet(Σ2) - logdet(Σ1)))
+    elseif n === :LogNormal          # the same as for the logarithms, which are Normal
+        return KL(Family(:Normal, f.params...), Family(:Normal, g.params...))
+    elseif n === :Cauchy
+        x1, γ1 = f.params
+        x2, γ2 = g.params
+        return _rlog(_rdiv(radd(rpow(radd(γ1, γ2), 2), rpow(_rsub(x1, x2), 2)), rmul(_rc(4), γ1, γ2)))
+    elseif n === :Binomial
+        f.params[1] == g.params[1] || throw(ArgumentError("closed-form KL needs two Binomials with the same n"))
+        return rmul(f.params[1], KL(Family(:Bernoulli, f.params[2]), Family(:Bernoulli, g.params[2])))
     end
+    throw(ArgumentError("no closed-form KL for $(n)"))
 end
+
 
 # Evaluate a random quantity at values of its variables (numbers only).
 _reval(x::RConst, vals) = x.value
 _reval(x::RVal, vals) = vals[x.rv]
 _reval(x::RAdd, vals) = sum(_reval(t, vals) for t in x.terms)
 _reval(x::RMul, vals) = prod(_reval(t, vals) for t in x.factors)
-_reval(x::RPow, vals) = _reval(x.base, vals)^x.p
+_reval(x::RPow, vals) = _numpow(_reval(x.base, vals), x.p)
+
 _reval(x::RFun, vals) = _rfunction(x.f)(_reval(x.arg, vals))
 """
     evaluate(r::RExpr, values::Pair...) -> Number
