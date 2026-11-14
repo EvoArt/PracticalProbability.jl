@@ -184,7 +184,8 @@ simplify(E(X^2 + 3Y), laws(X => Family(:Normal, μ, σ), Y => Family(:Poisson, �
 PDF(Family(:Gamma, 2, 1), y)              # densities and CDFs as random quantities
 CDF(Family(:Normal, 0, 1), 1.96)          # 0.975 (Φ)
 change_of_variables(Family(:Normal, 0, 1), X, exp(X), y)   # the LogNormal density
-order_statistic(Family(:Exponential, λ), 1, 3, y)        # the minimum of three: 3 λ exp(-3 y λ)
+order_statistic(Family(:Exponential, λ), 1, 3, y)        # the minimum of three: 3 λ exp(-3y λ)
+
 
 ```
 

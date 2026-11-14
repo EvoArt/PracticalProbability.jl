@@ -121,7 +121,8 @@
     @testset "order statistics" begin
         m = order_statistic(Family(:Exponential, λ), 1, 3, y)       # the minimum of three
         @test evaluate(m, vals..., y => 0.4) ≈ 3 * 2.1 * exp(-3 * 2.1 * 0.4)
-        @test !any(f -> f isa PracticalProbability.RPow, m.factors)        # (e^a)³ folded to e^{3a}
+        @test m == 3 * λ * exp(-3 * y * λ)                                # exponentials folded and merged
+
 
         @test evaluate(order_statistic(Family(:Uniform, 0, 1), 2, 2, y), y => 0.3) ≈ 0.6
         @test evaluate(order_statistic(Family(:Uniform, 0, 1), 2, 3, y), y => 0.3) ≈ 6 * 0.3 * 0.7

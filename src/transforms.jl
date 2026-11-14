@@ -633,7 +633,8 @@ function order_statistic(f::Family, k::Integer, n::Integer, x)
     F = CDF(f, X)
     c = factorial(big(n)) ÷ (factorial(big(k - 1)) * factorial(big(n - k)))
     c = c <= typemax(Int) ? Int(c) : c
-    return rmul(RConst(c), rpow(F, k - 1), rpow(expand(_rsub(_one, F)), n - k), PDF(f, X))
+    return _mergeexp(RExpr[RConst(c), rpow(F, k - 1), rpow(expand(_rsub(_one, F)), n - k), PDF(f, X)])
+
 end
 
 # ---------------------------------------------------------------------------
