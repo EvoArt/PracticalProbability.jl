@@ -1,0 +1,241 @@
+---
+title: "Venn diagrams of event probabilities"
+subtitle: "Seeing the probability calculus with PracticalProbability.jl"
+engine: julia
+julia:
+  exeflags: ["--project=@."]
+format:
+  typst:
+    toc: true
+    papersize: a4
+    margin:
+      x: 2.2cm
+      y: 2.2cm
+    fig-format: svg
+    fig-align: center
+  html:
+    toc: true
+    code-fold: false
+execute:
+  cache: false
+---
+
+PracticalProbability writes probability expressions as you would on paper and
+transforms them symbolically. When the expression is about **events**, it can
+also be drawn: `venn` turns each probability term into a Venn diagram, and keeps
+the shape of the algebra (sums, products, fractions, equations, derivations)
+with the operators between the panels. The pictures are generated from the
+expressions, so a rule's output is drawn exactly as the rule produced it.
+
+```{julia}
+#| output: false
+using PracticalProbability
+using CairoMakie
+```
+
+## Reading a panel
+
+Each panel is the sample space $\Omega$ (the box) with one circle per event.
+For a term $P(E \mid C)$:
+
+- the cells of $E \cap C$, the event being measured, are filled in **blue**;
+- the rest of the conditioning event $C$ is **lightly tinted**: it is the
+  sample space that is left once $C$ is known;
+- everything outside $C$ is **grey**: conditioning has ruled it out.
+
+An unconditional term $P(E)$ has nothing greyed out. Its whole box is the
+sample space.
+
+```{julia}
+@event A B C
+venn(P(A))
+```
+
+```{julia}
+venn(P(A | B))
+```
+
+Read the conditional panel as a ratio of areas. The blue cell
+$A \cap B$ is measured *relative to* the tinted and blue part, $B$. That is the
+definition $P(A \mid B) = P(A \cap B) / P(B)$, which can be drawn directly:
+
+```{julia}
+venn(Equation(P(A | B), P(A ∩ B) / P(B)))
+```
+
+## Complements, unions and intersections
+
+Events combine with `∪`, `∩` and complement (`A'`), and every combination is a
+set of cells:
+
+```{julia}
+venn(P(A ∪ B))
+```
+
+```{julia}
+venn(P(A ∩ B'))
+```
+
+With three events there are eight cells, and conditioning works the same way:
+
+```{julia}
+venn(P(A ∩ B' | C))
+```
+
+## Rules of probability, drawn
+
+The rules in the package return expressions, and those expressions can be
+drawn. Each picture below is `venn(Equation(lhs, rule(lhs)))`.
+
+### The complement rule
+
+$P(A) = 1 - P(A^c)$. The blue disc is everything except the blue frame:
+
+```{julia}
+venn(Equation(P(A), complement_rule(P(A))))
+```
+
+### Inclusion–exclusion
+
+Adding $P(A)$ and $P(B)$ counts the lens $A \cap B$ twice, so it is subtracted
+once:
+
+```{julia}
+venn(Equation(P(A ∪ B), inclusion_exclusion(P(A ∪ B))))
+```
+
+With three events, the pairwise overlaps are subtracted and the triple overlap
+is added back:
+
+```{julia}
+inclusion_exclusion(P(A ∪ B ∪ C))
+```
+
+```{julia}
+venn(inclusion_exclusion(P(A ∪ B ∪ C)); scale = 140)
+```
+
+### De Morgan
+
+The complement of a union is the intersection of the complements. Both sides
+highlight the same cell:
+
+```{julia}
+venn(Equation(P((A ∪ B)'), demorgan(P((A ∪ B)'))))
+```
+
+### Total probability
+
+Splitting on $B$: each product is a conditional panel weighted by how likely its
+condition is. The two conditions, $B$ and $B^c$, between them cover the
+sample space:
+
+```{julia}
+venn(Equation(P(A), total_probability(P(A), B)))
+```
+
+### Bayes' rule
+
+Quotients are drawn as fractions. Note how the condition moves: on the left
+$B$ is known, while in the numerator it is $A$ that is known:
+
+```{julia}
+venn(Equation(P(A | B), bayes(P(A | B))))
+```
+
+## Derivations
+
+A derivation is drawn one step per row, with each step's justification on the
+right. Here the probability that neither $A$ nor $B$ happens, rewritten with the
+complement rule and then inclusion–exclusion:
+
+```{julia}
+d = derivation(P((A ∪ B)'))
+apply!(d, complement_rule, "complement rule")
+apply!(d, e -> mapprobs(p -> p.targets == [A ∪ B] ? inclusion_exclusion(p) : p, e),
+       "inclusion–exclusion")
+d
+```
+
+```{julia}
+venn(d)
+```
+
+`simplify(…; trace = true)` returns a derivation too. Here it recombines the two
+halves of $A$:
+
+```{julia}
+s = simplify(P(A ∩ B) + P(A ∩ B'); trace = true)
+```
+
+```{julia}
+venn(s)
+```
+
+## Outcomes of a variable
+
+`X(1)` is the event $X = 1$ of an ordinary random variable. Two different values
+of the same variable cannot both happen, so their overlap is impossible and is
+drawn hatched rather than as a real cell:
+
+```{julia}
+@rv X
+venn(P(X(1) ∪ X(2)))
+```
+
+## Pictures and numbers: a diagnostic test
+
+A disease $D$ has prevalence 1%. A test $T$ is positive for 95% of people with
+the disease and 5% of people without it. Bayes' rule, with the evidence
+expanded by total probability:
+
+```{julia}
+@event D T
+test = BayesNet(D => 0.01, (T | D) => [0.95, 0.05])
+posterior_D = bayes(P(D | T); expand = true)
+```
+
+```{julia}
+venn(Equation(P(D | T), posterior_D); scale = 170)
+```
+
+The denominator is the whole tinted region of the left panel, $T$, split into its
+part inside $D$ and its part outside. Most positives come from the much larger
+group without the disease, which is why the answer is small:
+
+```{julia}
+compute(P(D | T), test), compute(posterior_D, test)
+```
+
+## Styling and composing
+
+`venn` returns a `Makie.FigureAxisPlot`. Keyword arguments set the colours and
+labels (`labels = :latex`, `:text` or `:none`), and `vennplot!` draws into an
+axis of your own, so panels can go into any layout:
+
+```{julia}
+fig = Figure(size = (720, 300))
+for (i, (x, col)) in enumerate([(P(A | B), :darkorange), (P(B | A), :seagreen)])
+    ax = Axis(fig[1, i]; aspect = DataAspect(), title = i == 1 ? "given B" : "given A")
+    hidedecorations!(ax); hidespines!(ax)
+    vennplot!(ax, x; highlightcolor = col, labels = :text)
+end
+fig
+```
+
+## What has no Venn diagram
+
+A Venn diagram shows events. $P(X)$ for a plain random variable is a whole
+distribution over the values of $X$, not the probability of one event, so it has
+no Venn diagram. The same goes for interventions $\mathrm{do}(\cdot)$ and sums
+over variables. These raise an error that says why:
+
+```{julia}
+try
+    venn(P(X))
+catch err
+    println(sprint(showerror, err))
+end
+```
+
+Diagrams are also limited to three events per figure.

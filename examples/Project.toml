@@ -1,0 +1,12 @@
+[deps]
+CairoMakie = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
+Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
+PracticalBayesPlot = "abd9f751-687e-4400-a054-1391536a3b77"
+PracticalProbability = "93b2fbfa-61cc-4dc4-bd52-4e81a6524d86"
+Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
+
+[sources.PracticalProbability]
+path = ".."
+
+[sources.PracticalBayesPlot]
+path = "../../PracticalBayesPlot"

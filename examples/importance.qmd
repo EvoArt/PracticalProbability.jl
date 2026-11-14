@@ -1,0 +1,268 @@
+---
+title: "Importance weights, derived"
+subtitle: "Symbolic importance sampling with PracticalProbability.jl"
+engine: julia
+julia:
+  exeflags: ["--project=@."]
+format:
+  html:
+    toc: true
+    code-fold: false
+    embed-resources: true
+    html-math-method: mathml   # TeX → MathML at render time: no MathJax, works offline
+execute:
+  cache: false
+---
+
+Importance sampling draws particles from a proposal $q$ and corrects for not
+sampling from the target $\pi$ with the weight
+
+$$
+w(z) = \frac{\pi(z)}{q(z)}, \qquad
+\mathbb{E}_\pi[f] = \mathbb{E}_q[w f].
+$$
+
+Working out $w$ by hand means writing both densities in their factorised
+forms, cancelling what they share, and dropping anything that does not vary
+across particles. That last step gives *self-normalised* weights, used when
+the target is a posterior known only up to its evidence. `importance_weight`
+does these steps symbolically and records each one, so the result can be
+checked exactly on a discrete network and, for models, compiled to a
+log-weight function.
+
+```{julia}
+#| output: false
+using PracticalProbability
+using Distributions
+using Random
+rng = Xoshiro(1)
+```
+
+## Likelihood weighting
+
+The simplest proposal is the prior. A proposal can use terms of the target's
+own distribution `P`, and identical terms cancel:
+
+```{julia}
+@rv θ Y
+g = @dag θ → Y
+lw = importance_weight(P(θ | Y), P(θ); dag = g)
+```
+
+The posterior is written in the graph's factorisation. Its normaliser
+$\sum_\theta P(\theta)\,P(Y \mid \theta) = P(Y)$ depends only on the data, so
+it is dropped, and the prior cancels. What remains is the likelihood.
+
+```{julia}
+latex(lw; env = :display)
+```
+
+## A proposal of its own
+
+A different proposal is a separate named distribution. `@density q` declares
+it, and `q(θ)` never cancels against `P(θ)`:
+
+```{julia}
+@density q
+iw = importance_weight(P(θ | Y), q(θ); dag = g)
+```
+
+## Checking it exactly
+
+On discrete networks every claim can be checked by enumeration: every step of
+the derivation, the identity $q \cdot w = \pi$, and that $q$ covers the
+target's support. Each named distribution gets its own network.
+
+```{julia}
+bn = rand_bayesnet(g; card = 4, rng)
+nets = Dict(:P => bn, :q => BayesNet(θ => [0.1, 0.2, 0.3, 0.4]))
+verify(iw, nets), check_support(iw, nets)
+```
+
+A proposal that puts no mass where the target has some fails the support
+check:
+
+```{julia}
+holey = Dict(:P => bn, :q => BayesNet(θ => [0.5, 0.5, 0.0, 0.0]))
+check_support(iw, holey)
+```
+
+`relative_ess` is $\mathbb{E}_q[w]^2 / \mathbb{E}_q[w^2]$, the effective
+sample size per particle. It is computed exactly, here for the observation
+$Y = 1$. The posterior itself is the best possible proposal:
+
+```{julia}
+y1 = Y(1)
+proposals = ["prior P(θ)" => P(θ), "q(θ)" => q(θ), "posterior P(θ | Y=1)" => P(θ | y1)]
+[name => relative_ess(importance_weight(P(θ | y1), prop; dag = g), nets)
+ for (name, prop) in proposals]
+```
+
+## Sequential Monte Carlo
+
+In a state-space model, a particle filter extends each particle from $X_1$
+to $X_2$ and reweights it by the *incremental* weight. The incremental target
+is $P(X_2 \mid X_1)\,P(Y_2 \mid X_2)$. The observation $Y_2$ is data, but the
+previous state $X_1$ varies across particles and must stay in the weight.
+
+```{julia}
+@rv X1 X2 Y1 Y2
+h = @dag begin
+    X1 → (X2, Y1)
+    X2 → Y2
+end
+target = P(X2 | X1) * P(Y2 | X2)
+```
+
+The **bootstrap filter** proposes from the transition kernel, and the weight
+is the likelihood of the new observation:
+
+```{julia}
+importance_weight(target, P(X2 | X1); dag = h, data = [Y2])
+```
+
+The **locally optimal proposal** conditions on the new observation. Its
+weight is the predictive likelihood $P(Y_2 \mid X_1)$, which doesn't depend on
+the new state at all:
+
+```{julia}
+opt = importance_weight(target, P(X2 | X1, Y2); dag = h, data = [Y2])
+```
+
+With **any other kernel**, nothing cancels:
+
+```{julia}
+importance_weight(target, q(X2 | X1, Y2); dag = h, data = [Y2])
+```
+
+The locally optimal weight has no variance given $X_1$: its relative ESS is 1
+for every previous state and observation.
+
+```{julia}
+bnh = rand_bayesnet(h; card = 3, rng)
+extrema(relative_ess(opt, bnh).values)
+```
+
+The bootstrap's is lower, and how much lower depends on the previous state
+and the observation:
+
+```{julia}
+boot = importance_weight(target, P(X2 | X1); dag = h, data = [Y2])
+relative_ess(boot, bnh)
+```
+
+### Whole paths, on plates
+
+The same step can be written for any time $t$, with indexed variables.
+The path target is the joint density of states and observations up to $t$,
+a product over a plate. Here `x[0]` is the initial state:
+
+```{julia}
+@rv x y
+@index t 1:T
+@index s 1:t
+γ = ∏(s, P(x[s] | x[s-1]) * P(y[s] | x[s]))
+```
+
+`smc_weight` derives the incremental weight
+$w_t = \gamma_t / (\gamma_{t-1}\, q_t)$. Peeling the last step off $\gamma_t$
+cancels the whole past, so only one time slice remains:
+
+```{julia}
+smc_weight(γ, P(x[t] | x[t-1]))
+```
+
+The locally optimal kernel needs that slice's graph, which is read from the
+factors of the last step:
+
+```{julia}
+opt_t = smc_weight(γ, P(x[t] | x[t-1], y[t]))
+```
+
+The last line is the weight of a whole path, the product of the incremental
+weights. To check the derivation exactly at a concrete time, unroll it onto a
+network over `x_0, x_1, …`:
+
+```{julia}
+gT = DAG([x[0], x[1], x[2], x[3], y[1], y[2], y[3]],
+         Dict(x[1] => [x[0]], x[2] => [x[1]], x[3] => [x[2]],
+              y[1] => [x[1]], y[2] => [x[2]], y[3] => [x[3]]))
+verify(opt_t, rand_bayesnet(gT; card = 3, rng); at = 1:3)
+```
+
+## Generative models
+
+The same algebra works on models. `@generative` reads a model's `~`
+statements. Put `@graphical` in front of a PracticalBayes or Turing `@model`
+to do the same while defining it. The proposal is a second model over the
+same latent variables. A `~` statement that is identical in both models,
+along with the deterministic assignments it reads, is the same factor and
+cancels.
+
+```{julia}
+linreg = @generative function linreg(x, y)
+    α ~ Normal(0, 10)
+    β ~ Normal(0, 10)
+    σ ~ Exponential(1)
+    μ = α .+ β .* x
+    y .~ Normal.(μ, σ)
+end
+
+prior_q = @generative function prior_q()
+    α ~ Normal(0, 10)
+    β ~ Normal(0, 10)
+    σ ~ Exponential(1)
+end
+
+importance_weight(linreg, prior_q)
+```
+
+A proposal centred near the posterior for the regression coefficients keeps
+the prior on $\sigma$, so only the coefficients' factors survive:
+
+```{julia}
+centred_q = @generative function centred_q()
+    α ~ Normal(1, 0.15)
+    β ~ Normal(2, 0.25)
+    σ ~ Exponential(1)
+end
+
+iw_c = importance_weight(linreg, centred_q)
+```
+
+`logweight` compiles the surviving factors into a function. It contains only
+the factors that didn't cancel, written with each model's own distributions:
+
+```{julia}
+logweight_expr(iw_c) |> Base.remove_linenums!
+```
+
+### Running it
+
+Draw particles from each proposal, weight them, and estimate the posterior
+mean of $\beta$ by self-normalised importance sampling:
+
+```{julia}
+xs = collect(range(0, 1; length = 30))
+ys = 1 .+ 2 .* xs .+ 0.3 .* randn(rng, length(xs))
+data = (x = xs, y = ys)
+
+function snis(iw, draw; n = 20_000)
+    logw = @logweight(iw)
+    θs = [draw() for _ in 1:n]
+    lw = [logw(θ, data) for θ in θs]
+    w = exp.(lw .- maximum(lw))
+    w ./= sum(w)
+    (E_β = sum(w .* getproperty.(θs, :β)), ess = 1 / sum(abs2, w))
+end
+
+draw_prior() = (α = rand(rng, Normal(0, 10)), β = rand(rng, Normal(0, 10)), σ = rand(rng, Exponential(1)))
+draw_centred() = (α = rand(rng, Normal(1, 0.15)), β = rand(rng, Normal(2, 0.25)), σ = rand(rng, Exponential(1)))
+
+(prior = snis(importance_weight(linreg, prior_q), draw_prior),
+ centred = snis(iw_c, draw_centred))
+```
+
+Both estimates target the same posterior, but the prior wastes almost every
+particle. The weights are correct by construction in both cases. Only the
+proposal changes how many particles count.

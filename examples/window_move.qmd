@@ -1,0 +1,363 @@
+---
+title: "Proving the window move"
+subtitle: "An importance-sampling proof, derived and checked with PracticalProbability.jl"
+engine: julia
+julia:
+  exeflags: ["--project=@."]
+format:
+  html:
+    toc: true
+    code-fold: false
+    embed-resources: true
+execute:
+  cache: false
+---
+
+This example works through a short proof from leave-future-out validation of
+a state-space model of individual animals. To score the model on a window of
+future data $y_{(t+1):(t+M)}$ we need the predictive likelihood
+$p(y_{(t+1):(t+M)} \mid y_{1:t})$, estimated from posterior draws given
+$y_{1:t}$. The *window move* is an importance-sampling estimator of it. Each
+animal with data in the window has its latent path redrawn from its
+conditional given everyone else's paths and its own window data, one animal
+at a time, and the draw is weighted by the product of the normalising
+constants.
+
+The proof has three ingredients:
+
+1. a Gibbs sweep leaves the posterior invariant;
+2. on an extended space of old and new paths, target over proposal is the
+   product of normalising constants;
+3. the importance-sampling identity $\mathbb{E}_q[W] = \sum \gamma$ when
+   $q W = \gamma$ and $q$ covers $\gamma$'s support.
+
+`PracticalProbability` derives 1 and 2 symbolically, and also the sum in 3
+that turns the target into the predictive likelihood. It then checks the
+whole statement exactly, by enumeration, on a small discrete model.
+
+```{julia}
+#| output: false
+using PracticalProbability
+using Random
+rng = Xoshiro(2026)
+```
+
+## The claim
+
+Let $\pi(x, \theta) = p(x_\mathrm{win} \mid x_\mathrm{hist}, \theta)\,
+p(x_\mathrm{hist}, \theta \mid y_{1:t})$: the posterior, with the window filled
+in by the dynamics and no window data. Here $x = (x_1, \dots, x_n)$ are the
+latent paths of the animals with data in the window; the other animals' paths
+are held fixed throughout. Write
+$g_i(x_i, \theta) = p(y_{i,(t+1):(t+M)} \mid x_{i,(t+1):(t+M)}, \theta)$ for
+animal $i$'s own window data, and assume
+$p(y_{(t+1):(t+M)} \mid x, \theta) = \prod_i g_i(x_i, \theta)$.
+
+Fix an order $1, \dots, n$. For old paths $x^*$ and new paths $x$, write
+$c_i = (x_{1:i-1}, x^*_{i+1:n})$, and define
+
+$$
+Q(x \mid x^*, \theta) = \prod_i \frac{\pi(x_i \mid c_i, \theta)\, g_i(x_i, \theta)}{Z_i},
+\qquad Z_i = \sum_{x_i} \pi(x_i \mid c_i, \theta)\, g_i(x_i, \theta).
+$$
+
+**Claim.** If $(x^*, \theta) \sim \pi$, $x \sim Q(\cdot \mid x^*, \theta)$
+and $W = \prod_i Z_i$, then $\mathbb{E}[W] = p(y_{(t+1):(t+M)} \mid y_{1:t})$.
+
+Two animals are enough to see every step; the Gibbs lemma is also done with
+three. Everything is conditional on $y_{1:t}$, which is left out of the
+notation, and $y_i$ stands for animal $i$'s window data. $\theta$ is discrete
+here, so that everything can be enumerated. Declared as
+`RV(:θ, :continuous)` instead, the same derivations come out with
+$\int \cdot \, \mathrm{d}\theta$ in place of $\sum_\theta$.
+
+```{julia}
+#| output: false
+θ = RV(:θ)
+x1, x2, x3 = RV(:x₁), RV(:x₂), RV(:x₃)                        # new paths
+xs1, xs2, xs3 = RV(Symbol("x₁^*")), RV(Symbol("x₂^*")), RV(Symbol("x₃^*"))   # old paths
+y1, y2 = RV(:y₁), RV(:y₂)                                     # each animal's window data
+@density π
+```
+
+### Old paths as variables
+
+$x^*_2$ is not a new random quantity of the model but a second argument for
+the same distribution: $\pi(x_1 \mid x^*_2, \theta)$ is $\pi$'s conditional
+of animal 1 given animal 2, evaluated at animal 2's old path. The package has
+no notion of "the same variable at another value", and the proof needs none.
+The chain rule and marginalisation, which do all the work below, are
+identities between $\pi$'s marginals and conditionals that hold for any
+argument values. A step that needed to know that $x^*_2$ and $x_2$ are copies
+would have to see a term mentioning both, and no such term comes up.
+
+## 1. The sweep leaves π invariant
+
+The sweep without window data is
+$K(x \mid x^*, \theta) = \prod_i \pi(x_i \mid c_i, \theta)$. It leaves $\pi$
+invariant: $\sum_{x^*} \pi(x^*, \theta)\, K(x \mid x^*, \theta) = \pi(x, \theta)$.
+With two animals:
+
+```{julia}
+gibbs2 = Σ((xs1, xs2), π(xs1, xs2, θ) * π(x1 | (xs2, θ)) * π(x2 | (x1, θ)))
+d2 = simplify(gibbs2; trace = true)
+latex(d2; env = :display)
+```
+
+Each pair of steps swaps an old path for a new one: marginalise $x^*_i$ out
+of the joint, then the chain rule puts $x_i$ in its place. This only works
+because $c_i$ uses the *new* paths of the animals before $i$. Three animals
+follow the same pattern:
+
+```{julia}
+gibbs3 = Σ((xs1, xs2, xs3),
+           π(xs1, xs2, xs3, θ) * π(x1 | (xs2, xs3, θ)) *
+           π(x2 | (x1, xs3, θ)) * π(x3 | (x1, x2, θ)))
+latex(simplify(gibbs3; trace = true); env = :display)
+```
+
+For $n$ animals, after $i$ pairs of steps the expression is
+$\sum_{x^*_{i+1:n}} \pi(x_{1:i}, x^*_{i+1:n}, \theta) \prod_{j > i} \pi(x_j \mid c_j, \theta)$.
+
+## 2. The weight
+
+Put the old paths, $\theta$, the new paths and the window data on one space.
+The old paths and $\theta$ are a draw from $\pi$. The new paths come from the
+sweep, and each animal's window data from its own new path:
+
+```{julia}
+g_ext = @dag begin
+    θ → (xs1, xs2, x1, x2, y1, y2)
+    xs1 → xs2              # π(x₁*, x₂*, θ): no independence assumed
+    xs2 → x1               # x₁ ~ π(x₁ | x₂*, θ)
+    x1 → (x2, y1)          # x₂ ~ π(x₂ | x₁, θ); g₁ = p(y₁ | x₁, θ)
+    x2 → y2                # g₂ = p(y₂ | x₂, θ)
+end
+```
+
+From here on, `P` is the distribution of this extended space. Its table for
+$x_1$ is $\pi(x_1 \mid x_2, \theta)$ evaluated at $x^*_2$, so
+$p(x_1 \mid x^*_2, \theta) = \pi(x_1 \mid x^*_2, \theta)$, and conditioning
+on $y_1$ as well gives the first factor of $Q$. The target is
+$\tilde p \prod_i g_i$, with $\tilde p = \pi(x^*, \theta) K(x \mid x^*, \theta)$
+as in the note. The proposal is $\pi(x^*, \theta)\, Q(x \mid x^*, \theta)$:
+
+```{julia}
+target = P(xs1, xs2, θ) * P(x1 | (xs2, θ)) * P(x2 | (x1, θ)) *
+         P(y1 | (x1, θ)) * P(y2 | (x2, θ))
+proposal = P(xs1, xs2, θ) * P(x1 | (xs2, θ, y1)) * P(x2 | (x1, θ, y2))
+iw = importance_weight(target, proposal; dag = g_ext, data = [y1, y2], normalized = true)
+latex(iw; env = :display)
+```
+
+(`normalized = true` keeps the exact weight, not the weight up to a constant
+that self-normalised importance sampling would use.)
+
+Writing $p(x_1 \mid x^*_2, \theta, y_1)$ in the graph's factorisation uses
+$y_1 \perp x^*_2 \mid x_1, \theta$: animal 1's window data depend on its own
+path only, which is the assumption
+$p(y_{(t+1):(t+M)} \mid x, \theta) = \prod_i g_i$. That expansion produces
+the normaliser $p(y_1 \mid x^*_2, \theta)$, and everything else cancels. The
+two surviving factors are
+
+$$
+p(y_1 \mid x^*_2, \theta) = Z_1, \qquad p(y_2 \mid x_1, \theta) = Z_2,
+$$
+
+the probability of each animal's window data given everyone else ($c_1 = x^*_2$,
+$c_2 = x_1$), so the weight is $W = Z_1 Z_2$. This is the weight of the
+locally optimal proposal in a particle filter, applied once per animal.
+
+## 3. Its expectation
+
+$q W = \gamma$ wherever $q > 0$, and $q > 0$ wherever $\gamma > 0$ (checked
+below), so $\mathbb{E}_q[W] = \sum \gamma$. The sum of the target can be done
+with the model's own graph, the one for $(\theta, x, y)$. That graph says
+nothing about the old paths. It is only needed once they have been summed
+out:
+
+```{julia}
+g_model = @dag begin
+    θ → (x1, x2, y1, y2)
+    x1 → (x2, y1)
+    x2 → y2
+end
+total = simplify(Σ((θ, xs1, xs2, x1, x2), target); dag = g_model, trace = true)
+latex(total; env = :display)
+```
+
+Steps 1–3 are the lemma of section 1, which leaves $\pi(x, \theta)\, g_1\, g_2$.
+The rest use only that each animal's window data depend on its own path. The
+result is the model's $p(y_1, y_2)$, which is
+$p(y_{(t+1):(t+M)} \mid y_{1:t})$. This proves the claim.
+
+## 4. Checking it exactly
+
+Take a random model on `g_model`: three values each for $\theta$, the paths
+(each value standing for a whole path) and the window data. The extended
+network copies its tables. The old paths are a draw from $\pi$, and the sweep
+uses $\pi$'s conditionals.
+
+```{julia}
+#| output: false
+model = rand_bayesnet(g_model; card = 3, rng)
+
+# a factor's array with its dimensions in the given order
+table(f, vars) = permutedims(f.values, [findfirst(==(v), f.vars) for v in vars])
+copied(v, ps...) = table(cpt(model, v), [v, ps...])
+
+function sweep_network(model; extra = ())
+    specs = Pair[
+        θ => copied(θ),
+        (xs1 | θ) => copied(x1, θ),
+        (xs2 | (xs1, θ)) => copied(x2, x1, θ),
+        (x1 | (xs2, θ)) => table(compute(P(x1 | (x2, θ)), model), [x1, x2, θ]),
+        (x2 | (x1, θ)) => copied(x2, x1, θ),
+    ]
+    for v in extra                          # window data, events: copied as they are
+        f = cpt(model, v)
+        push!(specs, (v | Tuple(f.vars[2:end])) => f.values)
+    end
+    BayesNet(specs...)
+end
+ext = sweep_network(model; extra = (y1, y2))
+```
+
+`verify` checks every step of the weight's derivation, the identity
+$q \cdot W = \gamma$, and that $q$ covers the target's support. The second
+line is the Gibbs lemma in numbers: the new paths have the same joint
+distribution with $\theta$ as the old ones.
+
+```{julia}
+verify(iw, ext)
+```
+
+```{julia}
+compute(P(x1, x2, θ), ext) ≈ compute(P(x1, x2, θ), model)
+```
+
+And the claim itself: $\mathbb{E}_q[W]$, summed exactly over old paths,
+$\theta$ and new paths, against the model's predictive probability, for
+every value of the window data:
+
+```{julia}
+EW, _ = weight_moments(iw, ext)
+EW ≈ compute(P(y1, y2), model)
+```
+
+```{julia}
+EW
+```
+
+Simulating the window forward without its data is also unbiased: propose
+from the sweep $K$ itself, and the weight is $\prod_i g_i$. The window move
+has the smaller variance. Here are the smallest and largest relative ESS,
+$\mathbb{E}_q[W]^2 / \mathbb{E}_q[W^2]$, over the window data values:
+
+```{julia}
+forward = importance_weight(target, P(xs1, xs2, θ) * P(x1 | (xs2, θ)) * P(x2 | (x1, θ));
+                            dag = g_ext, data = [y1, y2], normalized = true)
+(forward = extrema(relative_ess(forward, ext).values),
+ window_move = extrema(relative_ess(iw, ext).values))
+```
+
+## 5. Conditioning on survival
+
+The first version of the move conditioned only on each animal being alive at
+$t$, the event $A_i$, with $w_i = P_\pi(A_i \mid c_i, \theta)$, $W = \prod_i w_i$
+and $H(x, \theta) = p(y_{(t+1):(t+M)} \mid x, \theta)$, which is 0 off
+$A = \bigcap_i A_i$. That claim was $\mathbb{E}[W H] = p(y_{(t+1):(t+M)} \mid y_{1:t})$
+and $\mathbb{E}[W] = P(A \mid y_{1:t})$. It is the window move with
+$g_i = \mathbf{1}_{A_i}$. In the package $A_i$ is an event whose table, given
+$x_i$, is 0 or 1:
+
+```{julia}
+A1, A2 = RV(:A₁, :event), RV(:A₂, :event)
+g_surv = @dag begin
+    θ → (xs1, xs2, x1, x2, y1, y2)
+    xs1 → xs2
+    xs2 → x1
+    x1 → (x2, A1, y1)
+    x2 → (A2, y2)
+end
+target_A = P(xs1, xs2, θ) * P(x1 | (xs2, θ)) * P(x2 | (x1, θ)) * P(A1 | x1) * P(A2 | x2)
+proposal_A = P(xs1, xs2, θ) * P(x1 | (xs2, θ, A1)) * P(x2 | (x1, θ, A2))
+iw_A = importance_weight(target_A, proposal_A; dag = g_surv, data = [A1, A2], normalized = true)
+latex(iw_A; env = :display)
+```
+
+The weight is $P(A_1 \mid x^*_2, \theta)\, P(A_2 \mid x_1, \theta) = w_1 w_2$.
+The note's proof works with $\tilde p / q$ rather than $\tilde p \prod_i g_i / q$,
+and $\tilde p$ is *not* covered by $q$, because the proposal never produces a
+dead animal. That is why the proof says "where $x$ is in $A$", and why the
+claim is about $\mathbb{E}[W H]$ with $H = 0$ off $A$:
+
+```{julia}
+#| output: false
+H = P(y1 | (x1, θ)) * P(y2 | (x2, θ))
+p_tilde = P(xs1, xs2, θ) * P(x1 | (xs2, θ)) * P(x2 | (x1, θ))
+iw_tilde = importance_weight(p_tilde, proposal_A; dag = g_surv, data = [A1, A2], normalized = true)
+iw_H = importance_weight(target_A * H, proposal_A; dag = g_surv, data = [A1, A2, y1, y2],
+                         normalized = true)
+```
+
+To check it, use a model in which path value 3 means dead by $t$, $A_i$ is
+"not 3", and $y_i = 1$ (a capture in the window) is impossible for a dead
+animal:
+
+```{julia}
+#| output: false
+function randcpt(rng, dims...)
+    T = rand(rng, dims...) .+ 0.05
+    T ./ sum(T; dims = 1)
+end
+function capture_table(rng)               # p(y | x, θ): no captures of the dead
+    T = randcpt(rng, 2, 3, 3)
+    T[1, 3, :] .= 0.0
+    T[2, 3, :] .= 1.0
+    T
+end
+model_A = BayesNet(
+    θ => randcpt(rng, 3),
+    (x1 | θ) => randcpt(rng, 3, 3),
+    (x2 | (x1, θ)) => randcpt(rng, 3, 3, 3),
+    (A1 | x1) => [1.0, 1.0, 0.0],
+    (A2 | x2) => [1.0, 1.0, 0.0],
+    (y1 | (x1, θ)) => capture_table(rng),
+    (y2 | (x2, θ)) => capture_table(rng),
+)
+model = model_A                           # sweep_network reads `model`
+ext_A = sweep_network(model_A; extra = (A1, A2, y1, y2))
+```
+
+```{julia}
+(weight_verified = verify(iw_A, ext_A),
+ p_tilde_covered = check_support(iw_tilde, ext_A))
+```
+
+$\mathbb{E}[W] = P(A)$, and $\mathbb{E}[W H] = p(y_1, y_2)$ at the observed
+captures $y_1 = y_2 = 1$:
+
+```{julia}
+EW_A, _ = weight_moments(iw_A, ext_A)
+EWH, _ = weight_moments(iw_H, ext_A)
+captured = (y1 => 1, y2 => 1)
+(E_W = EW_A, P_A = compute(P(A1, A2), model_A),
+ E_WH = EWH(captured...), p_y = compute(P(y1, y2), model_A)(captured...))
+```
+
+## What the package did, and what it didn't
+
+It derived the Gibbs lemma (the note's margin asks whether it needs proving;
+here it is four lines for two animals), the weight $W = \prod_i Z_i$, and the
+sum of the target down to $p(y_{(t+1):(t+M)} \mid y_{1:t})$, each step with
+its rule. Every identity was then checked exactly on random discrete models.
+
+It did not derive the general-$n$ statement. Sections 1–3 are for two
+animals, with three for the lemma, and the general case follows the visible
+pattern rather than a proof by induction. The importance-sampling identity
+$\mathbb{E}_q[W f] = \sum \gamma f$ is used, not derived; `verify` and
+`check_support` check its two hypotheses, $q W = \gamma$ on $q$'s support and
+$\gamma > 0 \Rightarrow q > 0$. And treating old paths as separately named
+variables is justified in the text, not by the package: it would accept a
+term like $\pi(x_2 \mid x^*_2)$ without complaint.

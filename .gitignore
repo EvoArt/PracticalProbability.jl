@@ -1,0 +1,10 @@
+Manifest.toml
+/docs/build/
+*.jl.cov
+*.jl.mem
+
+# Rendered Quarto output (regenerate from the .qmd sources)
+/examples/*.html
+/examples/*.pdf
+/examples/*_files/
+/examples/.quarto/
