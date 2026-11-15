@@ -57,15 +57,16 @@ include("markovchain.jl")
 include("markovplot.jl")
 include("draw/markov.jl")
 include("experiments.jl")
-include("adjustment.jl")
-include("implications.jl")
-include("lp.jl")
-include("lsemid.jl")
 include("admg.jl")
 include("shannon.jl")
 include("counterfactual.jl")
 include("cfbounds.jl")
 include("transport.jl")
+include("adjustment.jl")      # after admg.jl and cfbounds.jl
+include("implications.jl")
+include("lp.jl")
+include("lsemid.jl")
+
 
 """
     independencies(g; max_conditioning = 2) -> Independencies
