@@ -6,9 +6,10 @@
 # min c'x subject to A x = b, x ≥ 0. Returns (:optimal, value, x),
 # (:infeasible, nothing, nothing) or (:unbounded, nothing, nothing).
 function _simplex(c::AbstractVector, A::AbstractMatrix, b::AbstractVector)
-    T = promote_type(eltype(c), eltype(A), eltype(b))
-    T <: Union{Integer,Rational} && (T = Rational{BigInt})
-    T <: AbstractFloat || T <: Rational || (T = Float64)
+    # exact when every entry is (abstract element types such as Real can still hold only rationals)
+    exact = all(x -> x isa _Exact, c) && all(x -> x isa _Exact, A) && all(x -> x isa _Exact, b)
+    T = exact ? Rational{BigInt} : Float64
+
     A = T.(A); b = T.(b); c = T.(c)
     # independent rows only
     R, piv = _rref(hcat(A, b))
