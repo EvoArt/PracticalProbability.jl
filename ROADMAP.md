@@ -229,8 +229,9 @@ ComplexityMeasures.jl and Associations.jl cover those.
 
 - [x] Static checks in the test suite: Aqua (ambiguities, unbound parameters,
       stale dependencies, compat, piracy) and JET (provable errors).
-- [ ] Clear the 44 JET reports in the older code (cfbounds, counterfactual,
-      transport, importance, dagplot, probtree, admg; mostly `findfirst` results
-      used without a `nothing` check), then make the JET test strict.
+- [x] Clear the JET reports in the older code (mostly `findfirst` results used
+      without a `nothing` check, and `trace`-dependent return types); the JET
+      test is strict.
+
 
 
