@@ -785,6 +785,7 @@ closed-form [`H`](@ref) (differential entropy for continuous families) and
 | `:Dirichlet` | a vector of concentrations `[α₁, …, αₖ]` |
 | `:Poisson` | rate `λ` (KL only) |
 | `:Geometric` | success probability `p` (on 1, 2, …) |
+| `:NegativeBinomial` | number of successes `r`, success probability `p` (trials until the `r`-th success, on `r`, `r + 1`, …) |
 | `:Bernoulli` | `p` |
 | `:Binomial` | number of trials `n`, success probability `p` (KL only) |
 | `:LogNormal` | `μ`, `σ` of the logarithm |
@@ -806,7 +807,8 @@ struct Family
 end
 const _FAMILIES = Dict(:Normal => 2, :Laplace => 2, :Uniform => 2, :Exponential => 1, :Gamma => 2,
                        :Beta => 2, :Dirichlet => 1, :Poisson => 1, :Geometric => 1, :Bernoulli => 1,
-                       :MvNormal => 2, :LogNormal => 2, :Cauchy => 2, :Binomial => 2)
+                       :MvNormal => 2, :LogNormal => 2, :Cauchy => 2, :Binomial => 2,
+                       :NegativeBinomial => 2)
 _fparam(p::Integer) = RConst(float(p))       # floats, so negative powers of integers are fine
 _fparam(p) = _r(p)
 function Family(name::Symbol, params...)
@@ -819,7 +821,8 @@ function Family(name::Symbol, params...)
         (μ isa AbstractVector{<:Real} && Σ isa AbstractMatrix{<:Real} && size(Σ) == (length(μ), length(μ))) ||
             throw(ArgumentError("MvNormal takes a numeric mean vector and a matching covariance matrix"))
         return Family(name, Any[float.(μ), float.(Σ)])
-    elseif name === :Binomial          # the number of trials stays an integer
+    elseif name in (:Binomial, :NegativeBinomial)   # the count parameter stays an integer
+
         return Family(name, Any[_r(params[1]), _fparam(params[2])])
     elseif name === :Dirichlet
         αs = params[1]

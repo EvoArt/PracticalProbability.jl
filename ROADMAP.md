@@ -27,7 +27,8 @@ can later sit on top of that CAS core without depending on Symbolics.
       conjugate updates done symbolically.
 - [x] Transformations of random variables: `laws(X => Family(…))` and `law(g(X, Y))`
       for affine maps, sums of independent variables (Normal, Cauchy, Poisson,
-      Gamma/Exponential, Binomial/Bernoulli), `exp`/`log`, squares of centred
+      Gamma/Exponential, Binomial/Bernoulli, NegativeBinomial/Geometric),
+ `exp`/`log`, squares of centred
       Normals (χ²) and minima of Exponentials/Geometrics; densities and CDFs
       (`PDF`, `CDF`), `change_of_variables` and `jacobian`, `order_statistic`.
 - [x] Generating functions: `MGF`, `PGF`, `CF` of families and of linear

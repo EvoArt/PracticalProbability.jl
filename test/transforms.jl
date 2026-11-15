@@ -59,6 +59,14 @@
         @test law((X + Y) / 2, Lc) == Family(:Cauchy, 0, 1)           # the mean of Cauchys is Cauchy
         Lg = laws(X => Family(:Geometric, p), Y => Family(:Geometric, p))
         @test ev(law(min(X, Y), Lg).params[1]) ≈ 1 - 0.7^2
+        @test law(X + Y, Lg) == Family(:NegativeBinomial, 2, p)     # trials until the second success
+        nb = Family(:NegativeBinomial, 3, p)
+        @test ev(E(nb)) ≈ 3 / 0.3
+        @test ev(Var(nb)) ≈ 3 * 0.7 / 0.09
+        @test ev(rawmoment(nb, 2)) ≈ 3 * 0.7 / 0.09 + 100
+        @test evaluate(PGF(nb, y), vals..., y => 0.5) ≈ (0.15 / (1 - 0.35))^3
+        @test PDF(Family(:NegativeBinomial, 3, 0.3), 5).value ≈ 6 * 0.3^3 * 0.7^2
+
         @test_throws ArgumentError law(X * Y, L)
         @test_throws ArgumentError law(X^2 + X, L)
         @test_throws ArgumentError law(X + Y, laws(X => Family(:Gamma, 2, 1), Y => Family(:Gamma, 2, 3)))

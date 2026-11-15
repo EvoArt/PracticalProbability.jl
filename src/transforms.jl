@@ -84,6 +84,7 @@ function _mean(f::Family)
     n === :Beta && return _rdiv(p[1], radd(p[1], p[2]))
     n === :Poisson && return p[1]
     n === :Geometric && return rpow(p[1], -1)
+    n === :NegativeBinomial && return _rdiv(p[1], p[2])
     n === :Bernoulli && return p[1]
     n === :Binomial && return rmul(p[1], p[2])
     n === :LogNormal && return _rf(:exp, radd(p[1], rmul(_half, rpow(p[2], 2))))
@@ -104,6 +105,7 @@ function _variance(f::Family)
     end
     n === :Poisson && return p[1]
     n === :Geometric && return _rdiv(_rsub(RConst(1), p[1]), rpow(p[1], 2))
+    n === :NegativeBinomial && return _rdiv(rmul(p[1], _rsub(RConst(1), p[2])), rpow(p[2], 2))
     n === :Bernoulli && return rmul(p[1], _rsub(RConst(1), p[1]))
     n === :Binomial && return rmul(p[1], p[2], _rsub(RConst(1), p[2]))
     if n === :LogNormal
@@ -191,7 +193,9 @@ MGF(f::Family, t) = _withargument(_mgf, f, t)
     PGF(r, L::Laws, s)
 
 The probability generating function `E[sˣ]` of a distribution on the
-non-negative integers (Bernoulli, Binomial, Poisson, Geometric). For sums of
+non-negative integers (Bernoulli, Binomial, Poisson, Geometric,
+NegativeBinomial). For sums of
+
 independent variables the PGFs multiply.
 """
 PGF(f::Family, s) = _withargument(_pgf, f, s)
@@ -232,6 +236,9 @@ function _mgf(f::Family, t::RExpr)
     elseif n === :Geometric
         q = p[1]
         return _rdiv(rmul(q, _rf(:exp, t)), _rsub(RConst(1), rmul(_rsub(RConst(1), q), _rf(:exp, t))))
+    elseif n === :NegativeBinomial
+        r, q = p
+        return _rpowr(_rdiv(rmul(q, _rf(:exp, t)), _rsub(RConst(1), rmul(_rsub(RConst(1), q), _rf(:exp, t)))), r)
     end
     throw(ArgumentError(string("no closed-form moment generating function for ", n,
                                n in (:Cauchy, :LogNormal) ? " (it does not exist; use CF)" : "")))
@@ -243,6 +250,7 @@ function _pgf(f::Family, s::RExpr)
     n === :Bernoulli && return radd(_rsub(RConst(1), p[1]), rmul(p[1], s))
     n === :Binomial && return _rpowr(radd(_rsub(RConst(1), p[2]), rmul(p[2], s)), p[1])
     n === :Geometric && return _rdiv(rmul(p[1], s), _rsub(RConst(1), rmul(_rsub(RConst(1), p[1]), s)))
+    n === :NegativeBinomial && return _rpowr(_rdiv(rmul(p[2], s), _rsub(RConst(1), rmul(_rsub(RConst(1), p[2]), s))), p[1])
     throw(ArgumentError(string("probability generating functions are for distributions on 0, 1, 2, …; got ", n)))
 end
 
@@ -452,6 +460,8 @@ _asgamma(f::Family) = f.name === :Exponential ? (RConst(1), f.params[1]) :
                       f.name === :Gamma ? (f.params[1], f.params[2]) : nothing
 _asbinomial(f::Family) = f.name === :Bernoulli ? (RConst(1), f.params[1]) :
                          f.name === :Binomial ? (f.params[1], f.params[2]) : nothing
+_asnegbin(f::Family) = f.name === :Geometric ? (RConst(1), f.params[1]) :
+                       f.name === :NegativeBinomial ? (f.params[1], f.params[2]) : nothing
 
 function _sumlaw(f::Family, g::Family)
     if f.name === g.name === :Normal
@@ -471,6 +481,11 @@ function _sumlaw(f::Family, g::Family)
     if a !== nothing && b !== nothing
         a[2] == b[2] && return Family(:Binomial, radd(a[1], b[1]), a[2])
         throw(ArgumentError("a sum of Binomial/Bernoulli variables has a Binomial law only with a common p"))
+    end
+    a, b = _asnegbin(f), _asnegbin(g)
+    if a !== nothing && b !== nothing
+        a[2] == b[2] && return Family(:NegativeBinomial, radd(a[1], b[1]), a[2])
+        throw(ArgumentError("a sum of Geometric/NegativeBinomial variables has a NegativeBinomial law only with a common p"))
     end
     throw(ArgumentError(string("no closed form for the law of a sum of ", f.name, " and ", g.name, " variables")))
 end
@@ -540,6 +555,11 @@ function _pdf(f::Family, x::RExpr)
     elseif n === :Geometric
         q = p[1]
         return rmul(q, _rpowr(_rsub(_one, q), _rsub(x, _one)))
+    elseif n === :NegativeBinomial
+        # binomial(x - 1, r - 1) qʳ (1 - q)ˣ⁻ʳ
+        r, q = p
+        lchoose = radd(_rlgamma(x), rmul(RConst(-1), _rlgamma(r)), rmul(RConst(-1), _rlgamma(radd(_rsub(x, r), _one))))
+        return rmul(_rf(:exp, lchoose), _rpowr(q, r), _rpowr(_rsub(_one, q), _rsub(x, r)))
     end
     throw(ArgumentError(string("no closed-form density for ", n)))
 end
