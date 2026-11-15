@@ -267,6 +267,7 @@ const ROLECOLOURS = (target=1.0, given=0.18)
 include("makie/dag.jl")
 include("makie/tree.jl")
 include("makie/factor.jl")
+include("makie/markov.jl")
 
 # figure-level diagram functions draw with Makie from now on (unless the user chose)
 __init__() = PP._makie_loaded!()

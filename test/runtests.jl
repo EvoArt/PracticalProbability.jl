@@ -36,6 +36,7 @@ has_do(::PExpr) = false
     include("plates.jl")
     include("importance.jl")
     include("drawing.jl")        # PracticalBayesPlot drawings (before Makie may load)
+    include("markovplots.jl")
     include("venn.jl")           # the Makie part only where CairoMakie loads
     include("diagrams.jl")       # likewise
     include("information.jl")
@@ -51,6 +52,11 @@ has_do(::PExpr) = false
     include("odds.jl")
     include("markovchains.jl")
     include("experiments.jl")
+    include("adjustment.jl")
+    include("implications.jl")
+    include("lp.jl")
+    include("lsemid.jl")
+
 
     if HAVE_PB
         include("practicalbayes.jl")

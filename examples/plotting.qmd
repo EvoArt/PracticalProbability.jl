@@ -375,6 +375,37 @@ CeTZ files themselves, not pictures of them (the HTML version has no Typst):
 ```
 :::
 
+# Markov chains and hidden states
+
+Transition diagrams use the row-to-column convention of `MarkovChain`.
+Every nonzero transition is an arrow, including self-transitions; probability
+labels retain exact fractions. Absorbing states are shaded. `minprob` can hide
+small transitions without changing the displayed probabilities.
+
+```{julia}
+weather_chain = MarkovChain([3//4 1//4; 1//3 2//3]; states=["Sun", "Rain"])
+markovplot(weather_chain)
+```
+
+```{julia}
+absorbing_chain = MarkovChain([1 0 0; 1//4 1//2 1//4; 0 0 1];
+                              states=["Lost", "Playing", "Won"])
+markovplot(absorbing_chain)
+```
+
+An HMM diagram arranges hidden variables along time, with their emissions
+underneath. Here the third emission is unobserved. The function draws model
+structure; it does not infer hidden states. Supplying a `BayesNet` and explicit
+hidden/emission vectors also verifies that the network has this topology.
+
+```{julia}
+@rv State Emission
+hmmplot(State, Emission, 5; observed=[true, true, false, true, true])
+```
+
+Both functions have `!` forms for existing axes, support PracticalBayesPlot and
+Makie, and use the same SVG, TikZ and CeTZ exports as the other diagrams.
+
 # Cost
 
 Measured on a compute node of a Linux cluster (Julia 1.12, a fresh process

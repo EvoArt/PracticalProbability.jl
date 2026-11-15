@@ -11,6 +11,39 @@ network. Results print as LaTeX or as PrettyTables tables. `@graphical` reads a
 
 This is a work in progress, part of the PracticallyBayesian family of packages.
 
+## Markov-chain and HMM diagrams
+
+```julia
+using PracticalProbability
+import PracticalBayesPlot as PBP
+
+mc = MarkovChain([3//4 1//4; 1//3 2//3]; states=["Sun", "Rain"])
+markovplot(mc)                  # weighted arrows, including self-transitions
+markovplot(mc; minprob=0.3)     # hide small edges without renormalising
+
+@rv X Y
+hmmplot(X, Y, 5)               # hidden X₁ → … → X₅; emissions below
+hmmplot(X, Y, 5; observed=[true, true, false, true, true])
+PBP.save("hmm.svg", hmmplot(X, Y, 5))  # also .tex and .typ
+```
+
+Markov arrows follow the row-to-column convention of `transition_matrix(mc)`.
+Labels preserve rational probabilities; absorbing states are shaded. A custom
+`positions` vector follows the chain's state order. `markov_view(mc)` exposes
+the layout and original transition weights.
+
+HMM diagrams accept base variables and a step count, or explicit hidden and
+emission variable vectors. `hmmplot(bn, hidden, emissions)` also checks that a
+`BayesNet` has exactly the supplied HMM structure. `observed` is a Boolean or
+mask controlling emission shading; these diagrams do not perform inference.
+`hmm_view` returns the same `DAGView` used by `dagplot`.
+
+Both diagrams support the current `plotbackend()` (`:pbp` or `:makie`),
+`figure`/`axis` options, and `markovplot!`/`hmmplot!` for existing axes.
+Runnable examples are in [examples/markov-plots.jl](examples/markov-plots.jl).
+
+## Symbolic probability
+
 ```julia
 using PracticalProbability
 

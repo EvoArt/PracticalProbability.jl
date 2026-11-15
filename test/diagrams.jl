@@ -311,6 +311,18 @@ const PPd = PracticalProbability
             ax = CairoMakie.Axis(fig[2, 1])
             @test PPd.dagplot!(ax, conf, X ⟂ Y | Z) isa PPd.DAGView
             @test PPd.probtree!(CairoMakie.Axis(fig[2, 2]), [D, T]; bn=test) isa PPd.TreeLayout
+            # Select explicitly: earlier PBP tests deliberately pin their backend.
+            oldbackend = PPd.plotbackend()
+            PPd.plotbackend!(:makie)
+            try
+                chain = PPd.MarkovChain([3//4 1//4; 1//3 2//3]; states=[:sun, :rain])
+                @test save("markov", PPd.markovplot(chain)) > 1000
+                @test save("hmm", PPd.hmmplot(X, Y, 4)) > 1000
+                @test PPd.markovplot!(CairoMakie.Axis(fig[3, 1]), chain) isa PPd.MarkovView
+                @test PPd.hmmplot!(CairoMakie.Axis(fig[3, 2]), X, Y, 3) isa PPd.DAGView
+            finally
+                PPd.plotbackend!(oldbackend)
+            end
         end
     else
         @info "CairoMakie not in the test environment; skipping diagram drawing tests"

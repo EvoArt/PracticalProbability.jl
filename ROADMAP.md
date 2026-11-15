@@ -191,6 +191,8 @@ ComplexityMeasures.jl and Associations.jl cover those.
 - [ ] A PracticalBayes sampler that uses `logweight` (SNIS / SMC samplers).
 
 ### Output
+- [x] Weighted Markov-chain transition graphs (including loops and absorbing
+      states) and time-aligned HMM diagrams, with PracticalBayesPlot and Makie.
 - [x] Venn diagrams of event expressions, equations and derivations (Makie
       extension: `venn`, `vennplot`).
 - [x] Venn cell and panel probabilities from facts (`deduce`) or from draws.

@@ -121,13 +121,21 @@ push!(_RULES, rule_fact_disjoint, rule_fact_implies, rule_fact_independence)
 The result of [`deduce`](@ref): the query, its value (or `NaN`), and whether
 the facts determine it. Converts to `Float64`. When every known value is an
 integer or a `Rational`, the value is an exact `Rational`.
+
+When the query is not determined, `lower` and `upper` bound it (for a
+probability, a sum of probabilities or a conditional probability; otherwise
+`nothing`), and `extrema(s)` returns them.
 """
 struct Solution
     query::PExpr
     value::Real
     determined::Bool
     undetermined::Vector{PExpr}
+    lower::Union{Nothing,Real}
+    upper::Union{Nothing,Real}
 end
+Solution(q, v, d, u) = Solution(q, v, d, u, d ? v : nothing, d ? v : nothing)
+Base.extrema(s::Solution) = (s.lower, s.upper)
 Base.Float64(s::Solution) = Float64(s.value)
 _solstr(v::Rational) = _numstr(v)
 _solstr(v) = string(round(v; sigdigits=10))
@@ -137,6 +145,7 @@ function Base.show(io::IO, s::Solution)
         print(io, " = ", _solstr(s.value))
     else
         print(io, " is not determined by the facts")
+        s.lower === nothing || print(io, ": between ", _solstr(s.lower), " and ", _solstr(s.upper))
         isempty(s.undetermined) || print(io, " (unknown: ", join(map(x -> sprint(show, x), s.undetermined), ", "), ")")
     end
 end
@@ -341,8 +350,14 @@ deduce(P(A | B), P(B | A) => 0.9, P(A) => 0.01, P(B | A') => 0.05)
 The known values are linear constraints on the probabilities of the 2ⁿ cells
 of the events; [`disjoint`](@ref) and [`implies`](@ref) add more, and
 independence adds product equations as soon as enough is known. If the facts
-do not pin the query down, the result says so (`s.determined == false`) and
-names the unknown terms. Inconsistent facts are an error.
+do not pin the query down, the result says so (`s.determined == false`),
+names the unknown terms, and gives the tightest bounds the linear facts allow
+(by linear programming over the cell probabilities):
+`deduce(P(A ∩ B), P(A) => 0.3, P(B) => 0.5)` is between 0 and 0.3 (the
+Fréchet bounds). Independence facts are used only where they have become
+linear, so with them the bounds can be wider than the tightest possible.
+Inconsistent facts are an error.
+
 
 With exact values (`P(A) => 3//10`, or integers) the system is solved in
 rational arithmetic and the answer is an exact `Rational`:
@@ -356,7 +371,15 @@ function deduce(query::PExpr, facts...)
     missingterms = PExpr[]
     v = _solve_value(query, S, p0, N, missingterms)
     ok = isempty(missingterms)
-    return Solution(query, ok ? _shrink(v) : NaN, ok, unique(missingterms))
+    ok && return Solution(query, _shrink(v), true, PExpr[])
+    bnds = try
+        _deduce_bounds(query, S)          # lp.jl
+    catch err
+        err isa ArgumentError || rethrow()
+        nothing
+    end
+    lo, hi = bnds === nothing ? (nothing, nothing) : bnds
+    return Solution(query, NaN, false, unique(missingterms), lo, hi)
 end
 
 """

@@ -273,6 +273,9 @@ _rvs(xs::Union{Tuple,AbstractVector}) = unique(RV[v for x in xs for v in rvs(x)]
 Base.:(==)(a::Independence, b::Independence) =
     issetequal(a.Z, b.Z) && ((issetequal(a.X, b.X) && issetequal(a.Y, b.Y)) ||
                              (issetequal(a.X, b.Y) && issetequal(a.Y, b.X)))
+# consistent with ==: the two sides are unordered
+Base.hash(a::Independence, h::UInt) = hash(Set(a.Z), hash(hash(Set(a.X)) + hash(Set(a.Y)), hash(:Independence, h)))
+
 
 """
     holds(statement::Independence, g::DAG) -> Bool

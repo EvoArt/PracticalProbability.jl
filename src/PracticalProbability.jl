@@ -54,7 +54,13 @@ include("transforms.jl")
 include("gaussian.jl")
 include("odds.jl")
 include("markovchain.jl")
+include("markovplot.jl")
+include("draw/markov.jl")
 include("experiments.jl")
+include("adjustment.jl")
+include("implications.jl")
+include("lp.jl")
+include("lsemid.jl")
 include("admg.jl")
 include("shannon.jl")
 include("counterfactual.jl")
@@ -141,9 +147,21 @@ export probability_from_odds, odds_from_probability
 # Markov chains
 export MarkovChain, transition_matrix, nstep, distribution, communicating_classes
 export isirreducible, isaperiodic, stationary, hitting_probability, hitting_time, mean_return_time
+export MarkovView, MarkovTransition, markov_view, markovplot, markovplot!, hmm_view, hmmplot, hmmplot!
 # experiments
 export experiment, Outcomes, uniform, die, coin, bernoulli, categorical, depends_on, derived
 export Urn, urn, deck, draws
+# adjustment sets
+export isadjustment, adjustment_sets, optimal_adjustment, adjustment_formula
+# testable implications and Markov equivalence
+export markov_basis, verma_constraints, FunctionalConstraint, CPDAG, cpdag, vstructures
+export markov_equivalent, equivalence_class
+# bounds by linear programming
+export LPBounds, lp_bounds
+# identification in linear SEMs
+export covariance_symbol, covariance_values, isinstrument, instruments, iv_estimand
+export HTCResult, htc_identify
+
 
 
 
