@@ -10,14 +10,14 @@ function _draw_workload()
     bn = BayesNet(X => [0.3, 0.7], (Y | X) => [0.9 0.2; 0.1 0.8])
     figs = Any[
         _dagplot(Val(:pbp), g),
-        _dagplot(Val(:pbp), g, P(Y | Do(X))),
+        _dagplot(Val(:pbp), g, P(Y | Do(X))::Prob),
         _dagplot(Val(:pbp), DAG(X => Y, Y => Z), X ⟂ Z | Y),
         _probtree(Val(:pbp), P(A | B); bn=test),
         _probtree(Val(:pbp), [A, B]),
         _mosaic(Val(:pbp), P(A | B); bn=test),
         _venn(Val(:pbp), P(A | B)),
         _venn(Val(:pbp), P(A ∩ B | C); labels=:text),
-        _venn(Val(:pbp), Equation(P(A | B), bayes(P(A | B)))),
+        _venn(Val(:pbp), Equation(P(A | B), bayes(P(A | B)::Prob))),
         _factorplot(Val(:pbp), compute(P(Y | X), bn)),
         _factorplot(Val(:pbp), compute(P(Y | X), bn); kind=:heatmap),
         _factorplot(Val(:pbp), compute(P(X), bn)),

@@ -267,8 +267,8 @@ function _broadcast_factors(op, fs::Factor...)
     vars = reduce(union, (f.vars for f in fs); init=RV[])
     doms = Vector{Any}[]
     for v in vars
-        f = fs[findfirst(f -> v in f.vars, fs)]
-        push!(doms, f.domains[findfirst(==(v), f.vars)])
+        f = fs[something(findfirst(f -> v in f.vars, fs))]
+        push!(doms, f.domains[something(findfirst(==(v), f.vars))])
     end
     vals = broadcast(op, (_align(f, vars) for f in fs)...)
     vals = vals isa AbstractArray ? Array{Float64}(vals) : fill(Float64(vals))

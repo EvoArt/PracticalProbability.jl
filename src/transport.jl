@@ -265,7 +265,7 @@ function recover(p::Prob, g::DAG, S::RV; external=RV[], measured=nothing, maxsiz
     end
     # the RC algorithm (hidden variables, biased data only)
     r = _recover_rc(p, Y, X, g, S, L)
-    if okdata(r)
+    if r !== nothing && okdata(r)
         return finish(r)
     end
     r = _recover_by_id(p, g, S, ext, L, maxsize)
@@ -390,7 +390,7 @@ function _recover_by_id(p::Prob, g::DAG, S::RV, ext::Set{RV}, L::Set{RV}, maxsiz
     isempty(children(g, S)) || return nothing
     gs = subgraph(g, RV[v for v in g.nodes if v != S])
     e = try
-        identify(p, latent_projection(gs, collect(L)))
+        identify(p, latent_projection(gs, collect(L)))::PExpr
     catch err
         err isa NotIdentifiable && return nothing
         rethrow()
@@ -403,7 +403,7 @@ function _recover_by_id(p::Prob, g::DAG, S::RV, ext::Set{RV}, L::Set{RV}, maxsiz
     end
     ok[] || return nothing
     free = Set{RV}(_rvsof(vcat(p.targets, p.given)))
-    return simplify(_freshen(out, free))
+    return simplify(_freshen(out, free))::PExpr
 end
 
 function _recover_term(t::Prob, g::DAG, S::RV, ext::Set{RV}, L::Set{RV}, maxsize)

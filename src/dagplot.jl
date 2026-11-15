@@ -291,7 +291,7 @@ function _dag_plates(pos, sig::AbstractDict, labels::AbstractDict)
     for name in names
         members = [v for (v, s) in sig if name in s && haskey(pos, v)]
         isempty(members) && continue
-        depth = minimum(findfirst(==(name), sig[v]) for v in members)
+        depth = minimum(something(findfirst(==(name), sig[v])) for v in members)
         inner = maximum(length(sig[v]) for v in members)
         pad = DAG_RADIUS + 0.12 + 0.14 * (inner - depth)
         xs = [pos[v][1] for v in members]
@@ -310,8 +310,12 @@ _shiftpanel(p::DAGPanel, dx) =
 function _panelbox(p::DAGPanel)
     pos = Dict(n.v => (n.x, n.y) for n in p.nodes)
     # a curve's furthest point is halfway between its chord's midpoint and its control point
-    peaks = [((pos[e.from][1] + pos[e.to][1]) / 4 + e.bend[1] / 2, (pos[e.from][2] + pos[e.to][2]) / 4 + e.bend[2] / 2)
-             for e in p.edges if e.bend !== nothing]
+    peaks = NTuple{2,Float64}[]
+    for e in p.edges
+        b = e.bend
+        b === nothing && continue
+        push!(peaks, ((pos[e.from][1] + pos[e.to][1]) / 4 + b[1] / 2, (pos[e.from][2] + pos[e.to][2]) / 4 + b[2] / 2))
+    end
     xs = vcat([n.x for n in p.nodes], [q.x0 for q in p.plates], [q.x1 for q in p.plates], first.(peaks))
     ys = vcat([n.y for n in p.nodes], [q.y0 for q in p.plates], [q.y1 for q in p.plates], last.(peaks))
     isempty(xs) && return (-DAG_RADIUS, DAG_RADIUS, -DAG_RADIUS, DAG_RADIUS)

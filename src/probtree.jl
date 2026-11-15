@@ -61,6 +61,7 @@ end
 _levels(x::Prob, order, bn) = order === nothing ? _query_levels(x, bn) : _atoms(order)
 _levels(x::Union{Tuple,AbstractVector}, order, bn) = order === nothing ? _atoms(x) : _atoms(order)
 _levels(x::Atom, order, bn) = order === nothing ? Atom[x] : _atoms(order)
+_levels(x::PExpr, order, bn) = throw(ArgumentError(string("trees and mosaics are drawn for a query P(E | C) or a list of levels; got ", x)))
 _query(x::Prob) = x
 _query(x) = nothing
 

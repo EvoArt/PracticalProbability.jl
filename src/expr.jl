@@ -464,6 +464,7 @@ children(s::Sum) = s.terms
 children(q::Quotient) = PExpr[q.num, q.den]
 children(m::Marginal) = PExpr[m.body]
 
+rebuild(e::Union{Prob,Literal}, cs) = e       # no children
 rebuild(p::Product, cs) = mul(cs...)
 rebuild(s::Sum, cs) = add(cs...)
 rebuild(q::Quotient, cs) = divide(cs[1], cs[2])

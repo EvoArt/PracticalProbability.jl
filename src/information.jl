@@ -229,7 +229,7 @@ _subs(m::MutualInformation, d) = MutualInformation(Atom[_sa(a, d) for a in m.X],
 function _subs(dv::Divergence, d)
     p, q = _subs(dv.p, d), _subs(dv.q, d)
     (p isa Prob && q isa Prob) || throw(ArgumentError("substitution turned $(dv) into a degenerate divergence"))
-    return Divergence(p, q, dv.kind, dv.α)
+    return Divergence(p::Prob, q::Prob, dv.kind, dv.α)
 end
 _subs(l::Log, d) = _log(_subs(l.arg, d))
 

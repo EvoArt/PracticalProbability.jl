@@ -33,16 +33,18 @@ function _simplex(c::AbstractVector, A::AbstractMatrix, b::AbstractVector)
     # drive artificials out of the basis
     for i in 1:m
         basis[i] > n || continue
-        j = findfirst(j -> abs(tab[i, j]) > tol, 1:n)
-        j === nothing && continue          # a redundant row; cannot happen after rref
-        _pivot!(tab, basis, i, j)
+        for j in 1:n
+            if abs(tab[i, j]) > tol
+                _pivot!(tab, basis, i, j)
+                break
+            end
+        end
     end
-    tab = hcat(tab[:, 1:n], tab[:, end])
-    _run_simplex!(tab, basis, c, tol) || return (:unbounded, nothing, nothing)
-
+    tab2 = hcat(tab[:, 1:n], tab[:, end])
+    _run_simplex!(tab2, basis, c, tol) || return (:unbounded, nothing, nothing)
     x = zeros(T, n)
     for (i, j) in enumerate(basis)
-        x[j] = tab[i, end]
+        x[j] = tab2[i, end]
     end
     return (:optimal, dot(c, x), x)
 end
@@ -96,7 +98,8 @@ function _lp_range(c, A, b)
     lo = _simplex(c, A, b)
     lo[1] === :infeasible && throw(ArgumentError("the constraints are inconsistent (no probabilities satisfy them)"))
     hi = _simplex(.-c, A, b)
-    return (_shrink(lo[2]), _shrink(-hi[2]))
+    (lo[1] === :optimal && hi[1] === :optimal) || throw(ArgumentError("the bounds are infinite"))
+    return (_shrink(something(lo[2])), _shrink(-something(hi[2])))
 end
 
 # ---------------------------------------------------------------------------

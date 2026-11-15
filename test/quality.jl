@@ -15,15 +15,13 @@ end
 if Base.find_package("JET") !== nothing && VERSION >= v"1.11"
     @eval using JET: JET
     @testset "JET" begin
-        # Possible errors JET finds in this package's own code (no matching method on
-        # some branch, possibly undefined locals). The causal and drawing code still has
-        # reports (mostly `findfirst` that may return `nothing`), listed in the log;
-        # this is marked broken until they are fixed (see ROADMAP).
+        # possible errors JET finds in this package's own code (no matching method on
+        # some branch, possibly undefined locals); the log shows them if there are any
         res = JET.report_package(PracticalProbability; target_modules=(PracticalProbability,),
                                  mode=:basic, toplevel_logger=nothing)
         reports = JET.get_reports(res)
         isempty(reports) || @info "JET: $(length(reports)) possible errors" res
-        @test_broken isempty(reports)
+        @test isempty(reports)
     end
 
 else

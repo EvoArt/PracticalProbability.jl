@@ -61,7 +61,7 @@ function _causation_parts(q::Prob)
         end
     end
     throw(ArgumentError("bounds takes a probability of causation for a binary treatment X and outcome Y: " *
-                        "P(Y(Do(X(x)))(y), Y(Do(X(x′)))(y′)) (PNS) or P(Y(Do(X(x′)))(y′) | X(x), Y(y)) (PN/PS)"))
+                        "P(Y(Do(Event(X, x)))(y), Y(Do(Event(X, x′)))(y′)) (PNS) or P(Y(Do(Event(X, x′)))(y′) | X(x), Y(y)) (PN/PS)"))
 end
 
 """
@@ -71,11 +71,11 @@ Tian–Pearl bounds on a probability of causation for a binary treatment `X`
 (values `x`, `x′`) and outcome `Y` (values `y`, `y′`), from experimental terms
 `P(y | do(x))` and observational terms `P(x, y)`:
 
-- PNS, `P(Y(Do(X(x)))(y), Y(Do(X(x′)))(y′))`: the outcome happens with the
+- PNS, `P(Y(Do(Event(X, x)))(y), Y(Do(Event(X, x′)))(y′))`: the outcome happens with the
   treatment and not without it;
-- PN, `P(Y(Do(X(x′)))(y′) | X(x), Y(y))`: for a treated unit with the outcome,
+- PN, `P(Y(Do(Event(X, x′)))(y′) | X(x), Y(y))`: for a treated unit with the outcome,
   the outcome would not have happened untreated (probability of necessity);
-- PS, `P(Y(Do(X(x)))(y) | X(x′), Y(y′))`: for an untreated unit without the
+- PS, `P(Y(Do(Event(X, x)))(y) | X(x′), Y(y′))`: for an untreated unit without the
   outcome, the treatment would have produced it (probability of sufficiency).
   (PN and PS have the same form: observed `(x, y)` and the opposite
   counterfactual; here the first value of each is taken to be the one written
@@ -89,16 +89,12 @@ expressions. [`compute`](@ref) gives the numeric interval.
 function bounds(q::Prob; dag=nothing, monotone::Bool=false)
     parts = _causation_parts(q)
     name = q.name
-    if parts[1] === :pns
-        _, X, Y, x, x′, y, y′ = parts
-    else
-        # PN/PS: observed (xo, yo), counterfactual (xc, yc). Written in the
-        # PN form P(y′_{x′} | x, y), x = xo, y = yo, x′ = xc, y′ = yc.
-        _, X, Y, xo, xc, yo, yc = parts
-    end
+    # PNS: (x, x′, y, y′). PN/PS: observed (xo, yo) and counterfactual (xc, yc),
+    # given as (xo, xc, yo, yc) and written in the PN form P(y′_{x′} | x, y).
+    kind, X, Y, x, x′, y, y′ = parts
     pr(atoms...) = P(atoms...; name)
-    if parts[1] === :pns
-        Pyx, Pyx′, Py′x′ = pr(Y(y) | Do(X(x))), pr(Y(y) | Do(X(x′))), pr(Y(y′) | Do(X(x′)))
+    if kind === :pns
+        Pyx, Pyx′, Py′x′ = pr(Y(y) | Do(Event(X, x))), pr(Y(y) | Do(Event(X, x′))), pr(Y(y′) | Do(Event(X, x′)))
         Py = pr(Y(y))
         Pxy, Px′y′, Pxy′, Px′y = pr(X(x), Y(y)), pr(X(x′), Y(y′)), pr(X(x), Y(y′)), pr(X(x′), Y(y))
         if monotone
@@ -108,9 +104,8 @@ function bounds(q::Prob; dag=nothing, monotone::Bool=false)
         lower = PExpr[Literal(0), add(Pyx, -Pyx′), add(Py, -Pyx′), add(Pyx, -Py)]
         upper = PExpr[Pyx, Py′x′, add(Pxy, Px′y′), add(Pyx, -Pyx′, Pxy′, Px′y)]
     else
-        x, y, x′, y′ = xo, yo, xc, yc
-        Pyx′ = pr(Y(y) | Do(X(x′)))            # P(y_{x′})
-        Py′x′ = pr(Y(y′) | Do(X(x′)))
+        Pyx′ = pr(Y(y) | Do(Event(X, x′)))            # P(y_{x′})
+        Py′x′ = pr(Y(y′) | Do(Event(X, x′)))
         Py = pr(Y(y))
         Pxy, Px′y′ = pr(X(x), Y(y)), pr(X(x′), Y(y′))
         if monotone
@@ -142,9 +137,9 @@ treatment values `x` (treated), `x′` and outcome values `y` (the outcome
 happens), `y′`. Pass them to [`bounds`](@ref), or to [`compute`](@ref) with a
 structural model.
 """
-pns(X::RV, Y::RV, x, x′, y, y′) = P(Y(Do(X(x)))(y), Y(Do(X(x′)))(y′))
-pn(X::RV, Y::RV, x, x′, y, y′) = P(Y(Do(X(x′)))(y′) | (X(x), Y(y)))
-ps(X::RV, Y::RV, x, x′, y, y′) = P(Y(Do(X(x)))(y) | (X(x′), Y(y′)))
+pns(X::RV, Y::RV, x, x′, y, y′) = P(Y(Do(Event(X, x)))(y), Y(Do(Event(X, x′)))(y′))
+pn(X::RV, Y::RV, x, x′, y, y′) = P(Y(Do(Event(X, x′)))(y′) | (X(x), Y(y)))
+ps(X::RV, Y::RV, x, x′, y, y′) = P(Y(Do(Event(X, x)))(y) | (X(x′), Y(y′)))
 
 # ---------------------------------------------------------------------------
 # Mediation
@@ -168,10 +163,10 @@ them in a structural model.
 """
 function mediation(y::Event, X::RV, M::RV, x, x′; name::Symbol=:P)
     Y, v = y.rv, y.value
-    base = P(Y(Do(X(x′)))(v); name)
-    total = add(P(Y(Do(X(x)))(v); name), -base)
-    direct = add(P(Y(Do(X(x)), M(Do(X(x′))))(v); name), -base)
-    indirect = add(P(Y(Do(X(x′)), M(Do(X(x))))(v); name), -base)
+    base = P(Y(Do(Event(X, x′)))(v); name)
+    total = add(P(Y(Do(Event(X, x)))(v); name), -base)
+    direct = add(P(Y(Do(Event(X, x)), M(Do(Event(X, x′))))(v); name), -base)
+    indirect = add(P(Y(Do(Event(X, x′)), M(Do(Event(X, x))))(v); name), -base)
     return (total=total, direct=direct, indirect=indirect)
 end
 

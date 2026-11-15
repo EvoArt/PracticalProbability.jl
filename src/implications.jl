@@ -93,7 +93,7 @@ function verma_constraints(g::Union{DAG,ADMG})
     for (i, v) in enumerate(order)
         S = order[1:i]
         sub, H = _district_in(G, S, v)
-        Q = mul((Prob(Atom[w], Atom[order[1:findfirst(==(w), order)-1]...]) for w in H)...)
+        Q = mul((Prob(Atom[w], Atom[order[1:something(findfirst(==(w), order))-1]...]) for w in H)...)
         _verma_find!(out, seen, sub, H, Q, v, order)
     end
     return out

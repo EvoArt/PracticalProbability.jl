@@ -314,7 +314,7 @@ function _id_cond(Pd::_IDDist, v::RV, preds::Vector{RV}, V, order)
     return simplify(divide(num, den))
 end
 
-_preds(order, V, v) = RV[w for w in order[1:findfirst(==(v), order)-1] if w in V]
+_preds(order, V, v) = RV[w for w in order[1:something(findfirst(==(v), order))-1] if w in V]
 
 function _id(y::Set{RV}, x::Set{RV}, Pd::_IDDist, G::ADMG, order::Vector{RV}, q::PExpr)
     V = Set(nodes(G))

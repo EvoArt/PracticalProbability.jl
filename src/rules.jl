@@ -742,7 +742,7 @@ function identify(p::Prob, g::DAG; trace::Bool=false, latent=nothing)
     latent === nothing || return identify(p, latent_projection(g, latent); trace)
     _hascf(p) && return identify(p, latent_projection(g, RV[]); trace)     # counterfactuals: counterfactual.jl
     _check_in_graph(p, g)
-    d = simplify(p; dag=Dict(p.name => g), combine=false, trace=true)
+    d = simplify(p; dag=Dict(p.name => g), combine=false, trace=true)::Derivation
     q = last(d)
     if q isa Prob && any(a -> a isa Intervention, q.given)
         subs = _query_subs(q)
