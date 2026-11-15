@@ -150,7 +150,7 @@ simplify(P(B | A), assume(implies(A, B)))         # 1
 deduce(P(A ∩ B), P(A) => 0.3, P(B) => 0.5, P(A ∪ B) => 0.6)    # P(A ∩ B) = 0.2
 deduce(P(A ∪ B), P(A) => 0.3, P(B) => 0.4, A ⟂ B)              # P(A ∪ B) = 0.58
 deduce(P(A | B), P(B | A) => 0.9, P(A) => 0.01, P(B | A') => 0.05)
-deduce(P(A ∩ B), P(A) => 0.3, P(B) => 0.5)       # … is not determined by the facts
+deduce(P(A ∩ B), P(A) => 0.3, P(B) => 0.5)       # … not determined: between 0 and 0.3
 ```
 
 `deduce` works on the 2ⁿ cells of the events: known values are linear
@@ -352,7 +352,40 @@ default `P` only; give other distributions their own graphs with
 `simplify(expr; dag = Dict(:P => g, :q => gq))`. A proposal `q(y | x, z)` is
 then never simplified with `p`'s independencies.
 
+### Adjustment, testable implications and bounds
+
+```julia
+@rv X Y Z A B M
+g = @dag begin
+    Z → (X, Y)
+    X → Y
+    A → X
+    B → Y
+end
+adjustment_sets(g, X, Y)                 # [[Z]]: the minimal valid sets
+isadjustment(g, X, Y, [Z, A])            # true (generalised adjustment criterion)
+optimal_adjustment(g, X, Y)              # [B, Z]: the smallest-variance valid set
+adjustment_formula(P(Y | Do(X)), [Z])    # ∑_Z P(Y | X, Z) P(Z)
+
+markov_basis(g)                          # independences that imply all the others
+cpdag(g); markov_equivalent(g, h); equivalence_class(g)
+verma = @admg begin
+    A → B → Z → Y
+    B ↔ Y
+end
+verma_constraints(verma)                 # ∑_B P(Y | A, B, Z) P(B | A) does not depend on A
+
+iv = @admg begin
+    Z → X → Y
+    X ↔ Y
+end
+lp_bounds(P(Y(1) | Do(X(1))), iv, bn)    # sharp instrumental-variable bounds (Balke–Pearl)
+htc_identify(iv)                         # linear SEM: λ[X→Y] = σ[Y,Z] / σ[X,Z] (half-trek criterion)
+iv_estimand(iv, Z, X, Y)                 # the same through the instrument
+```
+
 ## Numbers
+
 
 `compute` evaluates any expression exactly against a discrete Bayesian network.
 Events of any shape go through their indicator functions, and `do(⋅)` is

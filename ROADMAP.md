@@ -18,8 +18,11 @@ can later sit on top of that CAS core without depending on Symbolics.
 - [x] Facts without a graph: independence (with decomposition and weak union),
       `disjoint`, `implies`, `iid`, `markov`; `deduce` for numeric exercises
       (linear algebra over the 2ⁿ cells, plus independence products).
-- [ ] `deduce` bounds when the facts don't determine the answer (a small LP:
-      "between 0.1 and 0.3"), and mutual vs pairwise independence of events.
+- [x] `deduce` bounds when the facts don't determine the answer (linear
+      programming over the cells; Charnes–Cooper for conditional probabilities).
+- [ ] Mutual vs pairwise independence of events in `deduce`, and tighter
+      bounds under independence facts (non-convex).
+
 - [ ] Distribution families in expressions (`p(x | θ) = Normal(x; μ, σ)`) and
       conjugate updates done symbolically.
 - [x] Transformations of random variables: `laws(X => Family(…))` and `law(g(X, Y))`
@@ -101,16 +104,28 @@ GES) are out of scope; CausalInference.jl covers those.
 - [x] Recoverability beyond adjustment: identify the query (hidden variables
       allowed) and recover each term from the biased data, external data or a
       term-level adjustment (front-door cases).
-- [ ] Adjustment sets: enumerate the minimal valid back-door sets, and the
-      optimal adjustment set (Henckel–Perković–Maathuis), for a DAG or ADMG.
-- [ ] General LP bounds for non-identifiable queries (Balke–Pearl), e.g. the
-      instrumental-variable bounds, generalising the Tian–Pearl bounds; the same
-      LP gives `deduce` its "between 0.1 and 0.3" answers.
-- [ ] Testable implications of a graph: its conditional independences, Verma
-      constraints of an ADMG (nested Markov), and Markov equivalence (are two
-      DAGs equivalent? the CPDAG). Symbolic only; no structure learning.
-- [ ] Identification in linear SEMs: instrumental variables and the
-      half-trek criterion, on top of the Gaussian algebra.
+- [x] Adjustment sets: the generalised adjustment criterion (`isadjustment`,
+      complete for DAGs and ADMGs), minimal and all valid sets
+      (`adjustment_sets`), the optimal set (`optimal_adjustment`,
+      Henckel–Perković–Maathuis) and `adjustment_formula`.
+- [ ] Adjustment for `P(Y | do(X), W)` (conditional adjustment), and a
+      polynomial-time enumeration of minimal sets (van der Zander et al.) for
+      large graphs instead of searching subsets.
+- [x] LP bounds for non-identifiable effects (`lp_bounds`, Balke–Pearl response
+      functions, exact simplex): sharp IV and natural bounds, linear
+      combinations such as the ACE.
+- [ ] LP bounds for counterfactual queries (PNS, effect of treatment on the
+      treated) and models with several districts (polynomial programs).
+- [x] Testable implications: `markov_basis` (ordered local Markov property,
+      DAGs and ADMGs), `verma_constraints` (Tian–Pearl), `vstructures`, `cpdag`
+      (Meek's rules), `markov_equivalent`, `equivalence_class`.
+- [ ] Markov equivalence of ADMGs (PAGs), and the full nested Markov model.
+- [x] Identification in linear SEMs: conditional instruments (`isinstrument`,
+      `instruments`, `iv_estimand`) and the half-trek criterion
+      (`htc_identify`) with each coefficient as a rational function of the
+      covariances.
+- [ ] Linear SEMs: the HTN (non-identifiability) half of the half-trek
+      criterion, and edge-wise identification beyond it.
 - [x] The papers' criteria in `recover`: P(y | x) without external data iff
       `Y ⟂ S | X` (BTP 2014, Thm 1); with external data the one-test
       separator conditions (Thms 2–3, Cors 3–5) and the selection-backdoor
