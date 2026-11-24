@@ -1,5 +1,9 @@
 # PracticalProbability
 
+[![Docs](https://img.shields.io/badge/docs-dev-blue.svg)](https://EvoArt.github.io/PracticalProbability.jl/dev/)
+[![CI](https://github.com/EvoArt/PracticalProbability.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/EvoArt/PracticalProbability.jl/actions/workflows/CI.yml?query=branch%3Amain)
+[![Coverage](https://codecov.io/gh/EvoArt/PracticalProbability.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/EvoArt/PracticalProbability.jl)
+
 Computer algebra for probability, in Julia. Write probability expressions as you
 would on paper: `P(A, B | C)`, `P(A ∪ Bᶜ)`, `π(x, y | D)`, `P(Y | Do(X))`.
 Transform them with the chain rule, Bayes' rule, marginalisation, complements,
